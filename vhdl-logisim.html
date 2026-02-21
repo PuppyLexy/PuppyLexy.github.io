@@ -167,51 +167,24 @@ body {
   flex-shrink: 0;
 }
 
-.status-ok { color: #2a8a2a; font-size: 14px; }
-.status-err { color: #cc2a2a; font-size: 14px; }
+.status-ok   { color: #2a8a2a; font-size: 14px; }
+.status-warn { color: #c8a020; font-size: 14px; }
+.status-err  { color: #cc2a2a; font-size: 14px; }
 
-/* ── VHDL Editor ── */
+/* ── Monaco Editor ── */
 #editor-wrap {
   flex: 1;
-  display: flex;
   overflow: hidden;
   background: #1e2127;
+  position: relative;
 }
 
-#line-numbers {
-  padding: 8px 6px 8px 8px;
-  background: #282c34;
-  color: #636d83;
-  font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  text-align: right;
-  min-width: 32px;
-  border-right: 1px solid #3a3f4b;
-  overflow: hidden;
-  white-space: pre;
-  user-select: none;
-  pointer-events: none;
+#monaco-editor {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
 }
-
-#vhdl-input {
-  flex: 1;
-  background: #1e2127;
-  color: #abb2bf;
-  font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 8px 8px 8px 10px;
-  border: none;
-  outline: none;
-  resize: none;
-  overflow: auto;
-  caret-color: #528bff;
-  white-space: pre;
-  tab-size: 2;
-}
-
-#vhdl-input::selection { background: rgba(82, 139, 255, 0.3); }
 
 #error-panel {
   padding: 8px 10px;
@@ -222,6 +195,14 @@ body {
   font-size: 11px;
   max-height: 80px;
   overflow-y: auto;
+}
+
+/* Monaco widget overrides to match Logisim theme */
+.monaco-editor .suggest-widget {
+  border: 1px solid #5a8fd4 !important;
+}
+.monaco-hover {
+  border: 1px solid #5a8fd4 !important;
 }
 
 /* ── Canvas Area ── */
@@ -322,6 +303,8 @@ body {
   color: #5a6a80;
 }
   </style>
+  <!-- Monaco Editor AMD loader from cdnjs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -373,9 +356,7 @@ body {
           <span id="editor-status" class="status-ok">●</span>
         </div>
         <div id="editor-wrap">
-          <div id="line-numbers"></div>
-          <textarea id="vhdl-input" spellcheck="false" autocomplete="off"
-            placeholder="-- Enter VHDL here..."></textarea>
+          <div id="monaco-editor"></div>
         </div>
         <div id="error-panel" style="display:none"></div>
       </div>
@@ -1308,37 +1289,942 @@ function roundRect(ctx, x, y, w, h, r) {
 
 // ── App Controller ──────────────────────────────────────────────────────────
 
-let renderer;
+// ═══════════════════════════════════════════════════════════════════════════
+//  VHDL LANGUAGE SERVER  (pure JS, runs inline — no WASM needed)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VHDL_KEYWORDS = [
+  'abs','access','after','alias','all','and','architecture','array','assert',
+  'attribute','begin','block','body','buffer','bus','case','component',
+  'configuration','constant','disconnect','downto','else','elsif','end',
+  'entity','exit','file','for','function','generate','generic','group',
+  'guarded','if','impure','in','inertial','inout','is','label','library',
+  'linkage','literal','loop','map','mod','nand','new','next','nor','not',
+  'null','of','on','open','or','others','out','package','port','postponed',
+  'procedure','process','protected','pure','range','record','register',
+  'reject','rem','report','return','rol','ror','select','severity','signal',
+  'shared','sla','sll','sra','srl','subtype','then','to','transport','type',
+  'unaffected','units','until','use','variable','wait','when','while','with',
+  'xnor','xor'
+];
+
+const VHDL_TYPES = [
+  'std_logic','std_logic_vector','std_ulogic','std_ulogic_vector',
+  'bit','bit_vector','boolean','integer','natural','positive','real',
+  'character','string','time','severity_level','signed','unsigned'
+];
+
+const VHDL_ATTRIBUTES = [
+  'event','stable','active','quiet','transaction','delayed',
+  'left','right','low','high','ascending','length','range','reverse_range',
+  'image','value','pos','val','pred','succ','leftof','rightof'
+];
+
+const VHDL_CONSTANTS = [
+  "'0'","'1'","'Z'","'X'","'U'","'W'","'L'","'H'",'-',
+  'true','false','rising_edge','falling_edge'
+];
+
+const VHDL_SNIPPETS = [
+  {
+    label: 'entity',
+    detail: 'Entity declaration',
+    insertText: `entity \${1:name} is\n  port (\n    \${2:port_name} : in std_logic\n  );\nend entity \${1:name};`,
+    documentation: 'VHDL entity declaration with port map'
+  },
+  {
+    label: 'architecture',
+    detail: 'Architecture body',
+    insertText: `architecture \${1:rtl} of \${2:entity_name} is\n  \${3:-- signals}\nbegin\n  \${4:-- concurrent statements}\nend architecture \${1:rtl};`,
+    documentation: 'VHDL architecture body'
+  },
+  {
+    label: 'process',
+    detail: 'Process statement',
+    insertText: `process(\${1:clk})\nbegin\n  if rising_edge(\${1:clk}) then\n    \${2:null};\n  end if;\nend process;`,
+    documentation: 'Clocked process with rising_edge detection'
+  },
+  {
+    label: 'process_async',
+    detail: 'Process with async reset',
+    insertText: `process(\${1:clk}, \${2:rst})\nbegin\n  if \${2:rst} = '1' then\n    \${3:q} <= '0';\n  elsif rising_edge(\${1:clk}) then\n    \${3:q} <= \${4:d};\n  end if;\nend process;`,
+    documentation: 'Process with asynchronous reset'
+  },
+  {
+    label: 'if',
+    detail: 'If statement',
+    insertText: `if \${1:condition} then\n  \${2:null};\nelsif \${3:condition} then\n  \${4:null};\nelse\n  \${5:null};\nend if;`,
+    documentation: 'VHDL if/elsif/else statement'
+  },
+  {
+    label: 'case',
+    detail: 'Case statement',
+    insertText: `case \${1:expression} is\n  when \${2:value} =>\n    \${3:null};\n  when others =>\n    null;\nend case;`,
+    documentation: 'VHDL case statement'
+  },
+  {
+    label: 'for_generate',
+    detail: 'For generate',
+    insertText: `\${1:label}: for \${2:i} in 0 to \${3:N}-1 generate\n  \${4:-- component instantiations}\nend generate \${1:label};`,
+    documentation: 'For-generate statement for structural replication'
+  },
+  {
+    label: 'component',
+    detail: 'Component declaration',
+    insertText: `component \${1:name} is\n  port (\n    \${2:port} : in std_logic\n  );\nend component;`,
+    documentation: 'Component declaration'
+  },
+  {
+    label: 'signal',
+    detail: 'Signal declaration',
+    insertText: `signal \${1:name} : \${2:std_logic};`,
+    documentation: 'Signal declaration'
+  },
+  {
+    label: 'port_map',
+    detail: 'Port map instantiation',
+    insertText: `\${1:label}: \${2:component_name}\n  port map (\n    \${3:port} => \${4:signal}\n  );`,
+    documentation: 'Component instantiation with port map'
+  },
+  {
+    label: 'library_use',
+    detail: 'Library/use clause',
+    insertText: `library ieee;\nuse ieee.std_logic_1164.all;\nuse ieee.numeric_std.all;`,
+    documentation: 'Standard IEEE library imports'
+  },
+  {
+    label: 'when_else',
+    detail: 'Conditional signal assignment',
+    insertText: `\${1:signal} <= \${2:a} when \${3:condition} else\n             \${4:b};`,
+    documentation: 'Conditional (when/else) signal assignment'
+  },
+  {
+    label: 'with_select',
+    detail: 'Selected signal assignment',
+    insertText: `with \${1:sel} select\n  \${2:output} <= \${3:a} when "00",\n                 \${4:b} when "01",\n                 \${5:c} when others;`,
+    documentation: 'Selected (with/select) signal assignment'
+  }
+];
+
+// ── VHDL Parser (lightweight, for diagnostics) ───────────────────────────
+
+function parseVHDL(code) {
+  const diagnostics = [];
+  const lines = code.split('\n');
+
+  // Track structure
+  let entityFound = false;
+  let archFound = false;
+  let beginCount = 0;
+  let endCount = 0;
+  let openParens = 0;
+  let entityName = null;
+  let archEntityRef = null;
+
+  // Extract declared signals and ports for undefined-signal checking
+  const declaredNames = new Set(VHDL_KEYWORDS);
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    // Strip comments
+    const commentIdx = raw.indexOf('--');
+    const line = commentIdx >= 0 ? raw.slice(0, commentIdx) : raw;
+    const trimmed = line.trim().toLowerCase();
+
+    // Count parens
+    for (const ch of line) {
+      if (ch === '(') openParens++;
+      else if (ch === ')') openParens--;
+    }
+
+    // Entity declaration
+    const entityMatch = trimmed.match(/^entity\s+(\w+)\s+is\b/);
+    if (entityMatch) {
+      if (entityFound) {
+        diagnostics.push({ line: i, msg: 'Multiple entity declarations found', severity: 'warning' });
+      }
+      entityFound = true;
+      entityName = entityMatch[1];
+      declaredNames.add(entityMatch[1]);
+    }
+
+    // Architecture
+    const archMatch = trimmed.match(/^architecture\s+\w+\s+of\s+(\w+)\s+is\b/);
+    if (archMatch) {
+      archFound = true;
+      archEntityRef = archMatch[1];
+      if (entityName && archMatch[1].toLowerCase() !== entityName.toLowerCase()) {
+        diagnostics.push({
+          line: i,
+          msg: `Architecture refers to entity '${archMatch[1]}' but entity '${entityName}' was declared`,
+          severity: 'error'
+        });
+      }
+    }
+
+    // Collect signal/port declarations
+    const sigMatch = trimmed.match(/^signal\s+([\w,\s]+)\s*:/);
+    if (sigMatch) {
+      sigMatch[1].split(',').forEach(n => declaredNames.add(n.trim().toLowerCase()));
+    }
+    const portMatch = trimmed.match(/^\s*([\w,\s]+)\s*:\s*(in|out|inout|buffer)\b/);
+    if (portMatch) {
+      portMatch[1].split(',').forEach(n => declaredNames.add(n.trim().toLowerCase()));
+    }
+
+    // Count begin/end (rough)
+    if (/\bbegin\b/.test(trimmed)) beginCount++;
+    if (/\bend\b/.test(trimmed)) endCount++;
+
+    // Check for common syntax issues
+    // Missing semicolon at end of concurrent assignment (simplified)
+    if (trimmed && !trimmed.startsWith('--')) {
+      // Port mode without std_logic type specified
+      if (/:\s*(in|out|inout|buffer)\s*$/.test(trimmed)) {
+        diagnostics.push({
+          line: i,
+          msg: 'Port declaration appears incomplete — missing type (e.g. std_logic)',
+          severity: 'warning'
+        });
+      }
+
+      // Signal assignment with = instead of <=
+      if (/\bsignal\b.*:=/.test(trimmed)) {
+        // This is actually fine for initial values — skip
+      } else if (/^\w+\s*=[^=]/.test(trimmed) && !/^\w+\s*=>/.test(trimmed)) {
+        diagnostics.push({
+          line: i,
+          msg: "Use '<=' for signal assignment, not '='",
+          severity: 'error'
+        });
+      }
+    }
+
+    // Detect 'process' without sensitivity list or clk
+    if (/^process\s*$/.test(trimmed)) {
+      diagnostics.push({
+        line: i,
+        msg: 'Process has no sensitivity list — add (clk) or (clk, rst)',
+        severity: 'warning'
+      });
+    }
+  }
+
+  // Structural checks
+  if (code.trim().length > 10) {
+    if (!entityFound) {
+      diagnostics.push({ line: 0, msg: 'No entity declaration found', severity: 'warning' });
+    }
+    if (entityFound && !archFound) {
+      diagnostics.push({ line: 0, msg: 'Entity declared but no architecture found', severity: 'warning' });
+    }
+    if (openParens > 0) {
+      diagnostics.push({ line: lines.length - 1, msg: `${openParens} unclosed parenthesis`, severity: 'error' });
+    } else if (openParens < 0) {
+      diagnostics.push({ line: lines.length - 1, msg: 'Extra closing parenthesis', severity: 'error' });
+    }
+  }
+
+  return diagnostics;
+}
+
+// Convert our diagnostics to Monaco markers
+function getDiagnosticMarkers(code, monaco) {
+  const diags = parseVHDL(code);
+  return diags.map(d => ({
+    severity: d.severity === 'error'
+      ? monaco.MarkerSeverity.Error
+      : monaco.MarkerSeverity.Warning,
+    startLineNumber: d.line + 1,
+    startColumn: 1,
+    endLineNumber: d.line + 1,
+    endColumn: 200,
+    message: d.msg,
+    source: 'VHDL-LS'
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MONACO SETUP
+// ═══════════════════════════════════════════════════════════════════════════
+
+let monacoEditor = null;
+let renderer = null;
 let currentNetlist = null;
 
-// ── Init ──────────────────────────────────────────────────────────────────
+require.config({
+  paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }
+});
 
-window.addEventListener('DOMContentLoaded', () => {
+require(['vs/editor/editor.main'], function(monaco) {
+  // ── 1. Register VHDL language ─────────────────────────────────────────
+
+  monaco.languages.register({ id: 'vhdl', extensions: ['.vhd', '.vhdl'], aliases: ['VHDL', 'vhdl'] });
+
+  // ── 2. Monarch tokenizer (full VHDL grammar) ──────────────────────────
+
+  monaco.languages.setMonarchTokensProvider('vhdl', {
+    ignoreCase: true,
+    defaultToken: 'invalid',
+    tokenPostfix: '.vhdl',
+
+    keywords: VHDL_KEYWORDS,
+    types: VHDL_TYPES,
+    attributes: VHDL_ATTRIBUTES,
+
+    operators: [
+      '<=', ':=', '=>', '=', '/=', '<', '>', '>=',
+      '+', '-', '*', '/', '**', '&', '|'
+    ],
+
+    symbols: /[=><!~?:&|+\-*\/\^%]+/,
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+
+    tokenizer: {
+      root: [
+        // Comments
+        [/--.*$/, 'comment'],
+
+        // String literals
+        [/"([^"\\]|\\.)*$/, 'string.invalid'],
+        [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
+
+        // Char literals  
+        [/'[^']'/, 'string.char'],
+        [/'[01ZXUWLH-]'/, 'constant.logic'],
+
+        // Numbers
+        [/\d+#[\da-fA-F_]+#/, 'number.based'],
+        [/\d[\d_]*\.[\d_]+([eE][+-]?\d[\d_]*)?/, 'number.float'],
+        [/\d[\d_]*/, 'number'],
+
+        // Attributes: word'attribute
+        [/(\w+)('(?:event|stable|active|quiet|transaction|left|right|low|high|ascending|length|range|image|value|pos|val|pred|succ))/, ['identifier', 'attribute']],
+
+        // Keywords, types, identifiers
+        [/[a-zA-Z_]\w*/, {
+          cases: {
+            '@types': 'type',
+            '@keywords': 'keyword',
+            '@default': 'identifier'
+          }
+        }],
+
+        // Operators
+        [/<=|:=|=>|\/=|[=<>!]/, 'operator'],
+        [/[+\-*\/&|]/, 'operator'],
+
+        // Delimiters
+        [/[{}()\[\]]/, '@brackets'],
+        [/[;,.]/, 'delimiter'],
+
+        // Whitespace
+        [/[ \t\r\n]+/, 'white'],
+      ],
+
+      string: [
+        [/[^\\"]+/, 'string'],
+        [/@escapes/, 'string.escape'],
+        [/\\./, 'string.escape.invalid'],
+        [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+      ],
+    }
+  });
+
+  // ── 3. Language configuration (brackets, comments, auto-close) ─────────
+
+  monaco.languages.setLanguageConfiguration('vhdl', {
+    comments: {
+      lineComment: '--',
+    },
+    brackets: [
+      ['(', ')'],
+      ['[', ']'],
+    ],
+    autoClosingPairs: [
+      { open: '(', close: ')' },
+      { open: '[', close: ']' },
+      { open: '"', close: '"' },
+    ],
+    surroundingPairs: [
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+    ],
+    wordPattern: /(-?\d*\.\d\w*)|([^`~!@#%^&*()\-=+[{\]}\\|;:'",.<>\/?\s]+)/g,
+    indentationRules: {
+      increaseIndentPattern: /\b(begin|then|loop|generate|is)\s*$/i,
+      decreaseIndentPattern: /^\s*(end|elsif|else|when)\b/i,
+    },
+    folding: {
+      markers: {
+        start: /\b(begin|is)\s*$/i,
+        end: /^\s*end\b/i
+      }
+    }
+  });
+
+  // ── 4. Context-aware Completion provider ──────────────────────────────
+
+  // Parse the document and return a rich symbol table
+  function buildSymbolTable(code) {
+    const symbols = { signals: [], ports: [], constants: [], types: [], components: [], libraries: [] };
+    const lines = code.split('\n');
+    lines.forEach((rawLine, li) => {
+      const line = rawLine.replace(/--.*$/, '').trim();
+      const lo = line.toLowerCase();
+
+      // ports:  name : in/out/inout/buffer type
+      let m = line.match(/^\s*([\w,\s]+?)\s*:\s*(in|out|inout|buffer)\s+([\w_]+(?:\s*\(.*?\))?)/i);
+      if (m) {
+        m[1].split(',').forEach(n => {
+          const name = n.trim();
+          if (name) symbols.ports.push({ name, mode: m[2].toLowerCase(), type: m[3], line: li });
+        });
+      }
+
+      // signals:  signal name : type
+      m = line.match(/^signal\s+([\w,\s]+?)\s*:\s*([\w_]+(?:\s*\(.*?\))?)/i);
+      if (m) {
+        m[1].split(',').forEach(n => {
+          const name = n.trim();
+          if (name) symbols.signals.push({ name, type: m[2], line: li });
+        });
+      }
+
+      // constants:  constant name : type := value
+      m = line.match(/^constant\s+(\w+)\s*:\s*([\w_]+)/i);
+      if (m) symbols.constants.push({ name: m[1], type: m[2], line: li });
+
+      // subtypes/types
+      m = line.match(/^(?:sub)?type\s+(\w+)\s+is\b/i);
+      if (m) symbols.types.push({ name: m[1], line: li });
+
+      // components
+      m = line.match(/^component\s+(\w+)\b/i);
+      if (m) symbols.components.push({ name: m[1], line: li });
+
+      // library/use
+      m = line.match(/^library\s+(\w+)/i);
+      if (m) symbols.libraries.push(m[1]);
+    });
+    return symbols;
+  }
+
+  // Determine the semantic context at the cursor
+  function getContext(model, position) {
+    const lineText = model.getLineContent(position.lineNumber);
+    const textBefore = lineText.substring(0, position.column - 1);
+    const lo = textBefore.toLowerCase().trim();
+
+    // Scan backwards to find enclosing block
+    let inPortDecl = false, inArchDecl = false, inProcess = false,
+        inGeneric = false, inCase = false, afterAssign = false,
+        afterColon = false, afterLibrary = false, afterUse = false,
+        afterEntity = false, afterOf = false, topLevel = true,
+        inPortMap = false;
+
+    // Look at current line
+    if (/:\s*(in|out|inout|buffer)?\s*$/.test(lo)) afterColon = true;
+    if (/\buse\s+/.test(lo)) afterUse = true;
+    if (/\blibrary\s+/.test(lo)) afterLibrary = true;
+    if (/<=\s*$/.test(lo) || /<=\s*\w*$/.test(lo)) afterAssign = true;
+    if (/\bof\s+$/.test(lo)) afterOf = true;
+    if (/\bentity\s+$/.test(lo)) { afterEntity = true; }
+
+    // Scan backwards for block context
+    for (let l = position.lineNumber - 1; l >= 0 && l >= position.lineNumber - 80; l--) {
+      const bl = model.getLineContent(l).replace(/--.*$/, '').trim().toLowerCase();
+      if (/\bport\s*\(/.test(bl) || /\bport\s*map\s*\(/.test(bl)) {
+        inPortDecl = true; break;
+      }
+      if (/\bgeneric\s*\(/.test(bl)) { inGeneric = true; break; }
+      if (/\bprocess\b/.test(bl)) { inProcess = true; break; }
+      if (/\bcase\s+\w+\s+is/.test(bl)) { inCase = true; break; }
+      if (/\barchitecture\b/.test(bl)) { inArchDecl = true; break; }
+    }
+
+    return { inPortDecl, inArchDecl, inProcess, inGeneric, inCase,
+             afterAssign, afterColon, afterLibrary, afterUse,
+             afterEntity, afterOf, inPortMap, lo, lineText, textBefore };
+  }
+
+  const STD_LIBRARIES = ['ieee', 'std', 'work'];
+  const IEEE_PACKAGES = [
+    'ieee.std_logic_1164.all',
+    'ieee.numeric_std.all',
+    'ieee.std_logic_arith.all',
+    'ieee.std_logic_unsigned.all',
+    'ieee.std_logic_signed.all',
+    'ieee.math_real.all',
+    'ieee.math_complex.all',
+  ];
+
+  // Extended type completions with common vector widths
+  const TYPE_COMPLETIONS = [
+    { label: 'std_logic',               insert: 'std_logic',                           detail: 'Single-bit logic' },
+    { label: 'std_logic_vector(7 downto 0)',  insert: 'std_logic_vector(7 downto 0)',  detail: '8-bit vector' },
+    { label: 'std_logic_vector(15 downto 0)', insert: 'std_logic_vector(15 downto 0)',detail: '16-bit vector' },
+    { label: 'std_logic_vector(31 downto 0)', insert: 'std_logic_vector(31 downto 0)',detail: '32-bit vector' },
+    { label: 'std_logic_vector(N downto 0)',  insert: 'std_logic_vector(${1:N} downto 0)', detail: 'N-bit vector (snippet)', snippet: true },
+    { label: 'unsigned(7 downto 0)',     insert: 'unsigned(7 downto 0)',               detail: '8-bit unsigned' },
+    { label: 'unsigned(N downto 0)',     insert: 'unsigned(${1:N} downto 0)',          detail: 'N-bit unsigned (snippet)', snippet: true },
+    { label: 'signed(7 downto 0)',       insert: 'signed(7 downto 0)',                 detail: '8-bit signed' },
+    { label: 'signed(N downto 0)',       insert: 'signed(${1:N} downto 0)',            detail: 'N-bit signed (snippet)', snippet: true },
+    { label: 'integer',                  insert: 'integer',                            detail: 'Integer type' },
+    { label: 'integer range 0 to N',     insert: 'integer range 0 to ${1:255}',        detail: 'Ranged integer', snippet: true },
+    { label: 'natural',                  insert: 'natural',                            detail: 'Natural (≥0) integer' },
+    { label: 'positive',                 insert: 'positive',                           detail: 'Positive (≥1) integer' },
+    { label: 'boolean',                  insert: 'boolean',                            detail: 'Boolean type' },
+    { label: 'bit',                      insert: 'bit',                                detail: 'Single-bit (0/1 only)' },
+    { label: 'bit_vector(7 downto 0)',   insert: 'bit_vector(7 downto 0)',             detail: '8-bit bit_vector' },
+    { label: 'real',                     insert: 'real',                               detail: 'Floating-point (simulation only)' },
+    { label: 'time',                     insert: 'time',                               detail: 'Time type (ns, ps, …)' },
+    { label: 'string',                   insert: 'string',                             detail: 'String type' },
+  ];
+
+  // Port-mode completions
+  const PORT_MODES = [
+    { label: 'in',     detail: 'Input port — driven from outside'     },
+    { label: 'out',    detail: 'Output port — driven from inside'      },
+    { label: 'inout',  detail: 'Bidirectional port'                    },
+    { label: 'buffer', detail: 'Output readable internally'            },
+  ];
+
+  // Logic literal completions
+  const LOGIC_LITERALS = [
+    { v: "'0'",   doc: 'Logic 0 (driven low)'     },
+    { v: "'1'",   doc: 'Logic 1 (driven high)'    },
+    { v: "'Z'",   doc: 'High impedance'            },
+    { v: "'X'",   doc: 'Unknown / don\'t care'    },
+    { v: "'U'",   doc: 'Uninitialized'             },
+    { v: "'L'",   doc: 'Weak 0'                    },
+    { v: "'H'",   doc: 'Weak 1'                    },
+    { v: "'W'",   doc: 'Weak unknown'              },
+    { v: "'-'",   doc: 'Don\'t care (synthesis)'  },
+  ];
+
+  // Keywords grouped by where they appear
+  const KW_CONCURRENT = ['when','else','with','select','generate','component','process','assert','report'];
+  const KW_SEQUENTIAL  = ['if','elsif','else','end','then','case','when','loop','for','while','next','exit','return','wait','null','report','assert','variable'];
+  const KW_DECL        = ['signal','constant','variable','type','subtype','component','attribute','alias','file'];
+  const KW_TOP         = ['library','use','entity','architecture','package','configuration'];
+
+  monaco.languages.registerCompletionItemProvider('vhdl', {
+    triggerCharacters: ["'", '.', ' ', ':', '(', ',', '>'],
+
+    provideCompletionItems(model, position) {
+      const word  = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,        endColumn:    word.endColumn
+      };
+
+      const ctx  = getContext(model, position);
+      const syms = buildSymbolTable(model.getValue());
+      const sugg = [];
+
+      const kw  = (label, doc) => sugg.push({ label, kind: monaco.languages.CompletionItemKind.Keyword,   insertText: label, range, detail: doc || 'keyword', sortText: '3' + label });
+      const typ = (label, insert, detail, isSnippet) => sugg.push({
+        label, kind: monaco.languages.CompletionItemKind.TypeParameter,
+        insertText: insert,
+        insertTextRules: isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : 0,
+        range, detail, sortText: '2' + label
+      });
+      const snip = (s) => sugg.push({
+        label: s.label, kind: monaco.languages.CompletionItemKind.Snippet,
+        insertText: s.insertText,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+        range, detail: s.detail, documentation: { value: s.documentation }, sortText: '0' + s.label
+      });
+      const sym = (name, kind, detail) => sugg.push({
+        label: name, kind, insertText: name, range, detail, sortText: '1' + name
+      });
+
+      // ── After 'library' keyword
+      if (ctx.afterLibrary) {
+        STD_LIBRARIES.forEach(l => kw(l, 'Library name'));
+        return { suggestions: sugg };
+      }
+
+      // ── After 'use' keyword — package completions
+      if (ctx.afterUse) {
+        IEEE_PACKAGES.forEach(pkg => sugg.push({
+          label: pkg, kind: monaco.languages.CompletionItemKind.Module,
+          insertText: pkg + ';', range,
+          detail: 'IEEE package', sortText: '0' + pkg
+        }));
+        STD_LIBRARIES.forEach(l => sugg.push({
+          label: l + '.', kind: monaco.languages.CompletionItemKind.Module,
+          insertText: l + '.', range, detail: 'Library', sortText: '1' + l
+        }));
+        return { suggestions: sugg };
+      }
+
+      // ── After dot (library.package completion)
+      if (ctx.textBefore.trim().endsWith('.')) {
+        const before = ctx.textBefore.trim().toLowerCase();
+        if (before.startsWith('use ') || before.startsWith('use\t')) {
+          IEEE_PACKAGES.filter(p => p.startsWith(before.split('use ')[1] || '')).forEach(pkg => {
+            const parts = pkg.split('.');
+            sugg.push({ label: parts.slice(1).join('.'), kind: monaco.languages.CompletionItemKind.Module,
+              insertText: parts.slice(1).join('.') + ';', range, detail: pkg });
+          });
+        }
+        if (/\bevent$/.test(before) || /\bstable$/.test(before)) return { suggestions: sugg };
+        // Attribute completions after '
+        VHDL_ATTRIBUTES.forEach(a => sugg.push({
+          label: a, kind: monaco.languages.CompletionItemKind.Property,
+          insertText: a, range, detail: 'VHDL attribute', sortText: '1' + a
+        }));
+        return { suggestions: sugg };
+      }
+
+      // ── After ' (apostrophe) — std_logic literal or attribute
+      const charBefore = ctx.lineText[position.column - 2];
+      if (charBefore === "'") {
+        // Only if not inside a string
+        LOGIC_LITERALS.forEach(({ v, doc }) => sugg.push({
+          label: v, kind: monaco.languages.CompletionItemKind.EnumMember,
+          insertText: v.slice(1), // the opening ' is already typed
+          range, detail: doc, sortText: '0' + v
+        }));
+        VHDL_ATTRIBUTES.forEach(a => sugg.push({
+          label: a, kind: monaco.languages.CompletionItemKind.Property,
+          insertText: a, range, detail: 'Attribute', sortText: '1' + a
+        }));
+        return { suggestions: sugg };
+      }
+
+      // ── After colon — port mode or type
+      if (ctx.afterColon && ctx.inPortDecl) {
+        PORT_MODES.forEach(({ label, detail }) => kw(label, detail));
+        return { suggestions: sugg };
+      }
+
+      // ── After port mode keyword (: in / : out etc) — type completions
+      if (/:\s*(in|out|inout|buffer)\s+\w*$/.test(ctx.lo)) {
+        TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+        syms.types.forEach(t => typ(t.name, t.name, 'User-defined type', false));
+        return { suggestions: sugg };
+      }
+
+      // ── After 'signal name :' or 'variable name :' or 'constant name :' — type
+      if (/^(signal|variable|constant)\s+\w[\w,\s]*\s*:\s*\w*$/.test(ctx.lo)) {
+        TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+        syms.types.forEach(t => typ(t.name, t.name, 'User-defined type', false));
+        return { suggestions: sugg };
+      }
+
+      // ── After <= (signal assignment RHS) — signals, ports, constants, literals, functions
+      if (ctx.afterAssign) {
+        // All driveable values
+        syms.ports.filter(p => p.mode === 'in').forEach(p =>
+          sym(p.name, monaco.languages.CompletionItemKind.Interface, `in port : ${p.type}`));
+        syms.signals.forEach(s =>
+          sym(s.name, monaco.languages.CompletionItemKind.Variable, `signal : ${s.type}`));
+        syms.constants.forEach(c =>
+          sym(c.name, monaco.languages.CompletionItemKind.Constant, `constant : ${c.type}`));
+        LOGIC_LITERALS.forEach(({ v, doc }) => sugg.push({
+          label: v, kind: monaco.languages.CompletionItemKind.EnumMember,
+          insertText: v, range, detail: doc, sortText: '0' + v
+        }));
+        // Useful functions/aggregates
+        ['not ', 'and ', 'or ', 'xor ', 'nand ', 'nor ', 'xnor '].forEach(op => kw(op.trim(), 'Logic operator'));
+        sugg.push({ label: "(others => '0')", kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: "(others => '0')", range, detail: 'Aggregate — all zeros', sortText: '1' });
+        sugg.push({ label: "(others => '1')", kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: "(others => '1')", range, detail: 'Aggregate — all ones', sortText: '1' });
+        sugg.push({ label: 'std_logic_vector(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'std_logic_vector(${1:signal})', range, detail: 'Type cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'to_unsigned(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'to_unsigned(${1:value}, ${2:width})', range, detail: 'numeric_std cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'to_signed(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'to_signed(${1:value}, ${2:width})', range, detail: 'numeric_std cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'to_integer(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'to_integer(${1:unsigned_or_signed})', range, detail: 'numeric_std cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'rising_edge(…)', kind: monaco.languages.CompletionItemKind.Function,
+          insertText: 'rising_edge(${1:clk})', range, detail: 'Clock edge detection',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        return { suggestions: sugg };
+      }
+
+      // ── Inside process — sequential keywords + all local symbols
+      if (ctx.inProcess) {
+        KW_SEQUENTIAL.forEach(k => kw(k));
+        syms.ports.forEach(p => sym(p.name, monaco.languages.CompletionItemKind.Interface, `${p.mode} port`));
+        syms.signals.forEach(s => sym(s.name, monaco.languages.CompletionItemKind.Variable, 'signal'));
+        syms.constants.forEach(c => sym(c.name, monaco.languages.CompletionItemKind.Constant, 'constant'));
+        VHDL_SNIPPETS.filter(s => ['if','case','for_generate'].includes(s.label)).forEach(snip);
+        return { suggestions: sugg };
+      }
+
+      // ── After 'when' (in case) — values or signals
+      if (ctx.inCase || /\bwhen\s+\w*$/.test(ctx.lo)) {
+        LOGIC_LITERALS.forEach(({ v, doc }) => sugg.push({
+          label: v, kind: monaco.languages.CompletionItemKind.EnumMember,
+          insertText: v, range, detail: doc, sortText: '0'
+        }));
+        syms.signals.forEach(s => sym(s.name, monaco.languages.CompletionItemKind.Variable, 'signal'));
+        kw('others', 'Catch-all case');
+        return { suggestions: sugg };
+      }
+
+      // ── Architecture declarative region
+      if (ctx.inArchDecl) {
+        KW_DECL.forEach(k => kw(k));
+        VHDL_SNIPPETS.filter(s => ['signal','component','process','process_async','for_generate'].includes(s.label)).forEach(snip);
+        TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+        return { suggestions: sugg };
+      }
+
+      // ── Top-level (outside any block)
+      const isTopLevel = !ctx.inPortDecl && !ctx.inArchDecl && !ctx.inProcess && !ctx.inGeneric;
+      if (isTopLevel) {
+        KW_TOP.forEach(k => kw(k));
+        VHDL_SNIPPETS.filter(s => ['entity','architecture','library_use','component'].includes(s.label)).forEach(snip);
+        STD_LIBRARIES.forEach(l => kw(l, 'Library name'));
+        return { suggestions: sugg };
+      }
+
+      // ── Fallback — all symbols + all keywords + all snippets
+      syms.ports.forEach(p =>
+        sym(p.name, monaco.languages.CompletionItemKind.Interface, `${p.mode} port : ${p.type}`));
+      syms.signals.forEach(s =>
+        sym(s.name, monaco.languages.CompletionItemKind.Variable, `signal : ${s.type}`));
+      syms.constants.forEach(c =>
+        sym(c.name, monaco.languages.CompletionItemKind.Constant, `constant : ${c.type}`));
+      syms.types.forEach(t =>
+        sym(t.name, monaco.languages.CompletionItemKind.TypeParameter, 'user type'));
+      syms.components.forEach(c =>
+        sym(c.name, monaco.languages.CompletionItemKind.Class, 'component'));
+
+      VHDL_KEYWORDS.forEach(k => kw(k));
+      TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+      VHDL_SNIPPETS.forEach(snip);
+
+      return { suggestions: sugg };
+    }
+  });
+
+  // ── 5. Hover provider ──────────────────────────────────────────────────
+
+  const HOVER_DOCS = {
+    'std_logic': '**std_logic** *(ieee.std_logic_1164)*\n\nNine-valued logic type: `U X 0 1 Z W L H -`\n\nMost commonly used scalar signal type in synthesizable VHDL.',
+    'std_logic_vector': '**std_logic_vector** *(ieee.std_logic_1164)*\n\nArray of `std_logic`. Indexed as `(N downto 0)` or `(0 to N)`.\n\n```vhdl\nsignal bus : std_logic_vector(7 downto 0);\n```',
+    'rising_edge': '**rising_edge(clk)** *(ieee.std_logic_1164)*\n\nReturns `true` on the rising (0→1) transition of `clk`.\n\n```vhdl\nif rising_edge(clk) then\n  q <= d;\nend if;\n```',
+    'falling_edge': '**falling_edge(clk)** *(ieee.std_logic_1164)*\n\nReturns `true` on the falling (1→0) transition of `clk`.',
+    'process': '**process** statement\n\nA concurrent statement encapsulating sequential logic.\n\n```vhdl\nprocess(clk, rst)\nbegin\n  if rst = \'1\' then q <= \'0\';\n  elsif rising_edge(clk) then q <= d;\n  end if;\nend process;\n```',
+    'entity': '**entity** declaration\n\nDefines the interface (ports) of a VHDL design unit.\n\n```vhdl\nentity my_gate is\n  port ( a, b : in std_logic; y : out std_logic );\nend entity;\n```',
+    'architecture': '**architecture** body\n\nDefines the implementation of an entity.\n\n```vhdl\narchitecture rtl of my_gate is\nbegin\n  y <= a and b;\nend architecture;\n```',
+    'signal': '**signal** declaration\n\nDeclares an internal wire/net in the architecture declarative region.\n\n```vhdl\nsignal my_wire : std_logic;\nsignal bus : std_logic_vector(7 downto 0);\n```',
+    'port': '**port** clause\n\nDefines the external interface pins of an entity.',
+    'generic': '**generic** clause\n\nDefines parameters that can be customized at instantiation time.\n\n```vhdl\ngeneric ( WIDTH : integer := 8 );\n```',
+    'generate': '**generate** statement\n\nUsed to conditionally or repetitively instantiate components.\n\n```vhdl\nGEN: for i in 0 to N-1 generate\n  -- ...\nend generate;\n```',
+    'unsigned': '**unsigned** *(ieee.numeric_std)*\n\nUnsigned integer type. Use for arithmetic on `std_logic_vector`.\n\n```vhdl\nsignal count : unsigned(7 downto 0);\ncount <= count + 1;\n```',
+    'signed': '**signed** *(ieee.numeric_std)*\n\nTwo\'s-complement signed integer type.',
+    'downto': '**downto**\n\nSpecifies a descending range for arrays.\n`(7 downto 0)` — bit 7 is the MSB, standard convention.',
+    'others': "**others**\n\nUsed in aggregate expressions and case statements to cover all remaining cases.\n\n```vhdl\nsignal v : std_logic_vector(7 downto 0) := (others => '0');\n```",
+  };
+
+  monaco.languages.registerHoverProvider('vhdl', {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const key = word.word.toLowerCase();
+      const doc = HOVER_DOCS[key];
+      if (!doc) return null;
+      return {
+        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+        contents: [{ value: doc, isTrusted: true }]
+      };
+    }
+  });
+
+  // ── 6. Signature help (process, port, generic) ─────────────────────────
+
+  monaco.languages.registerSignatureHelpProvider('vhdl', {
+    signatureHelpTriggerCharacters: ['(', ','],
+    provideSignatureHelp(model, position) {
+      const lineText = model.getLineContent(position.lineNumber).toLowerCase();
+      if (lineText.includes('process')) {
+        return {
+          value: {
+            signatures: [{
+              label: 'process(sensitivity_list)',
+              documentation: 'Process with sensitivity list. The process executes when any signal in the list changes.',
+              parameters: [{ label: 'sensitivity_list', documentation: 'Comma-separated signals: clk, rst, ...' }]
+            }],
+            activeSignature: 0,
+            activeParameter: 0
+          },
+          dispose() {}
+        };
+      }
+      return null;
+    }
+  });
+
+  // ── 7. Document symbol provider (outline) ─────────────────────────────
+
+  monaco.languages.registerDocumentSymbolProvider('vhdl', {
+    provideDocumentSymbols(model) {
+      const symbols = [];
+      const text = model.getValue();
+      const lines = text.split('\n');
+      lines.forEach((raw, i) => {
+        const line = raw.replace(/--.*$/, '').trim().toLowerCase();
+        let m;
+        if ((m = line.match(/^entity\s+(\w+)/))) {
+          symbols.push({
+            name: m[1],
+            detail: 'Entity',
+            kind: monaco.languages.SymbolKind.Module,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        } else if ((m = line.match(/^architecture\s+(\w+)/))) {
+          symbols.push({
+            name: m[1],
+            detail: 'Architecture',
+            kind: monaco.languages.SymbolKind.Namespace,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        } else if ((m = line.match(/^signal\s+(\w+)/))) {
+          symbols.push({
+            name: m[1],
+            detail: 'Signal',
+            kind: monaco.languages.SymbolKind.Variable,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        } else if ((m = line.match(/^(\w+)\s*:\s*(in|out|inout)\s+/))) {
+          symbols.push({
+            name: m[1],
+            detail: m[2] + ' port',
+            kind: monaco.languages.SymbolKind.Interface,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        }
+      });
+      return symbols;
+    }
+  });
+
+  // ── 8. Define One Dark Pro-ish theme ──────────────────────────────────
+
+  monaco.editor.defineTheme('vhdl-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'keyword.vhdl',       foreground: 'c678dd', fontStyle: 'bold' },
+      { token: 'type.vhdl',          foreground: 'e5c07b' },
+      { token: 'comment.vhdl',       foreground: '5c6370', fontStyle: 'italic' },
+      { token: 'string.vhdl',        foreground: '98c379' },
+      { token: 'string.char.vhdl',   foreground: '98c379' },
+      { token: 'constant.logic.vhdl',foreground: 'd19a66' },
+      { token: 'number.vhdl',        foreground: 'd19a66' },
+      { token: 'number.float.vhdl',  foreground: 'd19a66' },
+      { token: 'number.based.vhdl',  foreground: 'd19a66' },
+      { token: 'operator.vhdl',      foreground: '56b6c2' },
+      { token: 'identifier.vhdl',    foreground: 'abb2bf' },
+      { token: 'attribute.vhdl',     foreground: '61afef', fontStyle: 'italic' },
+      { token: 'delimiter.vhdl',     foreground: 'abb2bf' },
+      { token: 'invalid.vhdl',       foreground: 'abb2bf' },
+    ],
+    colors: {
+      'editor.background': '#1e2127',
+      'editor.foreground': '#abb2bf',
+      'editor.lineHighlightBackground': '#2c313c',
+      'editor.selectionBackground': '#3e4451',
+      'editorLineNumber.foreground': '#4b5263',
+      'editorLineNumber.activeForeground': '#abb2bf',
+      'editorIndentGuide.background': '#2c313c',
+      'editorCursor.foreground': '#528bff',
+      'editorSuggestWidget.background': '#21252b',
+      'editorSuggestWidget.border': '#3a6eb4',
+      'editorHoverWidget.background': '#21252b',
+      'editorHoverWidget.border': '#3a6eb4',
+    }
+  });
+
+  // ── 9. Create editor instance ─────────────────────────────────────────
+
+  monacoEditor = monaco.editor.create(document.getElementById('monaco-editor'), {
+    language: 'vhdl',
+    theme: 'vhdl-dark',
+    fontSize: 13,
+    fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace",
+    fontLigatures: true,
+    lineHeight: 20,
+    minimap: { enabled: true, scale: 1 },
+    scrollBeyondLastLine: false,
+    wordWrap: 'off',
+    tabSize: 2,
+    insertSpaces: true,
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    formatOnType: false,
+    suggestOnTriggerCharacters: true,
+    quickSuggestions: { other: true, comments: false, strings: false },
+    parameterHints: { enabled: true },
+    hover: { enabled: true, delay: 300 },
+    folding: true,
+    glyphMargin: true,
+    renderLineHighlight: 'line',
+    scrollbar: { useShadows: false, verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+    bracketPairColorization: { enabled: true },
+    renderWhitespace: 'none',
+    padding: { top: 8, bottom: 8 },
+  });
+
+  // ── 10. Wire up diagnostics (run on change, debounced) ────────────────
+
+  let diagTimer = null;
+  monacoEditor.onDidChangeModelContent(() => {
+    clearTimeout(diagTimer);
+    diagTimer = setTimeout(() => {
+      const code = monacoEditor.getValue();
+      const model = monacoEditor.getModel();
+      const markers = getDiagnosticMarkers(code, monaco);
+      monaco.editor.setModelMarkers(model, 'vhdl-ls', markers);
+
+      // Update status indicator
+      const hasErrors = markers.some(m => m.severity === monaco.MarkerSeverity.Error);
+      const hasWarnings = markers.some(m => m.severity === monaco.MarkerSeverity.Warning);
+      const statusEl = document.getElementById('editor-status');
+      if (hasErrors) { statusEl.className = 'status-err'; statusEl.title = 'Errors detected'; }
+      else if (hasWarnings) { statusEl.className = 'status-warn'; statusEl.title = 'Warnings'; }
+      else { statusEl.className = 'status-ok'; statusEl.title = 'OK'; }
+    }, 400);
+  });
+
+  // ── 11. Ctrl+Enter to synthesize ──────────────────────────────────────
+
+  monacoEditor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+    () => synthesize()
+  );
+
+  // ── 12. Init canvas renderer ──────────────────────────────────────────
+
   const canvas = document.getElementById('circuit-canvas');
   renderer = new CircuitRenderer(canvas);
   renderer.resize();
 
-  // Pane resizer
   initResizer();
-
-  // Line numbers
-  const ta = document.getElementById('vhdl-input');
-  ta.addEventListener('input', updateLineNumbers);
-  ta.addEventListener('scroll', syncLineNumberScroll);
 
   // Load default example
   loadExample('half_adder');
-
-  // Keyboard shortcut
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      synthesize();
-    }
-  });
 });
 
 window.addEventListener('resize', () => {
+  if (monacoEditor) monacoEditor.layout();
   if (renderer) renderer.resize();
 });
 
@@ -1346,15 +2232,17 @@ window.addEventListener('resize', () => {
 
 function loadExample(name) {
   if (!name || !EXAMPLES[name]) return;
-  document.getElementById('vhdl-input').value = EXAMPLES[name];
-  updateLineNumbers();
+  if (monacoEditor) {
+    monacoEditor.setValue(EXAMPLES[name]);
+    monacoEditor.setScrollPosition({ scrollTop: 0 });
+  }
   document.getElementById('example-select').value = '';
 }
 
 // ── Synthesize ────────────────────────────────────────────────────────────
 
 async function synthesize() {
-  const vhdl = document.getElementById('vhdl-input').value.trim();
+  const vhdl = monacoEditor ? monacoEditor.getValue().trim() : '';
   if (!vhdl) return;
 
   const btn = document.getElementById('btn-synthesize');
@@ -1366,7 +2254,6 @@ async function synthesize() {
   btn.disabled = true;
   loadingOverlay.style.display = 'flex';
   errorPanel.style.display = 'none';
-  document.getElementById('editor-status').className = 'status-ok';
 
   try {
     const netlist = await callClaudeAPI(vhdl);
@@ -1377,7 +2264,6 @@ async function synthesize() {
 
     emptyOverlay.style.display = 'none';
 
-    // Update info
     const entity = (netlist.entity || 'unknown').toUpperCase();
     const gates = (netlist.gates || []).length;
     const ports = (netlist.inputs || []).length + (netlist.outputs || []).length;
@@ -1389,7 +2275,6 @@ async function synthesize() {
   } catch (err) {
     errorPanel.textContent = '✕ ' + err.message;
     errorPanel.style.display = 'block';
-    document.getElementById('editor-status').className = 'status-err';
     console.error(err);
   } finally {
     btn.classList.remove('loading');
@@ -1422,17 +2307,10 @@ JSON structure:
   "outputs": ["out1"],
   "signals": ["sig1", "sig2"],
   "gates": [
-    {
-      "id": "g1",
-      "type": "AND",
-      "inputs": ["a", "b"],
-      "output": "sig1"
-    }
+    { "id": "g1", "type": "AND", "inputs": ["a", "b"], "output": "sig1" }
   ],
   "clocked": false
 }`;
-
-  const userPrompt = `Convert this VHDL to a circuit netlist JSON:\n\n${vhdl}`;
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -1441,7 +2319,7 @@ JSON structure:
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userPrompt }]
+      messages: [{ role: 'user', content: `Convert this VHDL to a circuit netlist JSON:\n\n${vhdl}` }]
     })
   });
 
@@ -1452,18 +2330,12 @@ JSON structure:
 
   const data = await response.json();
   const text = data.content.map(b => b.text || '').join('').trim();
-
-  // Strip any accidental markdown fences
   const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
 
   let netlist;
-  try {
-    netlist = JSON.parse(clean);
-  } catch (e) {
-    throw new Error('Could not parse AI response as JSON. Try simplifying your VHDL.');
-  }
+  try { netlist = JSON.parse(clean); }
+  catch(e) { throw new Error('Could not parse AI response as JSON. Try simplifying your VHDL.'); }
 
-  // Validate minimally
   if (!netlist.gates || !netlist.inputs || !netlist.outputs) {
     throw new Error('Invalid netlist structure from AI. Missing gates, inputs, or outputs.');
   }
@@ -1476,12 +2348,10 @@ JSON structure:
 function zoom(factor) {
   if (!renderer) return;
   const wrap = document.getElementById('canvas-wrap');
-  const W = wrap.clientWidth / 2;
-  const H = wrap.clientHeight / 2;
+  const W = wrap.clientWidth / 2, H = wrap.clientHeight / 2;
   renderer.offsetX = W - (W - renderer.offsetX) * factor;
   renderer.offsetY = H - (H - renderer.offsetY) * factor;
-  renderer.scale *= factor;
-  renderer.scale = Math.max(0.2, Math.min(4, renderer.scale));
+  renderer.scale = Math.max(0.2, Math.min(4, renderer.scale * factor));
   renderer.draw();
   updateZoomLabel();
 }
@@ -1500,59 +2370,31 @@ function updateZoomLabel() {
   document.getElementById('sb-zoom').textContent = pct;
 }
 
-// ── Line numbers ──────────────────────────────────────────────────────────
-
-function updateLineNumbers() {
-  const ta = document.getElementById('vhdl-input');
-  const ln = document.getElementById('line-numbers');
-  const lines = ta.value.split('\n').length;
-  ln.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
-}
-
-function syncLineNumberScroll() {
-  const ta = document.getElementById('vhdl-input');
-  const ln = document.getElementById('line-numbers');
-  ln.scrollTop = ta.scrollTop;
-}
-
 // ── Resizer ───────────────────────────────────────────────────────────────
 
 function initResizer() {
   const resizer = document.getElementById('resizer');
   const editorPane = document.getElementById('editor-pane');
-  let dragging = false;
-  let startX = 0;
-  let startW = 0;
+  let dragging = false, startX = 0, startW = 0;
 
   resizer.addEventListener('mousedown', e => {
-    dragging = true;
-    startX = e.clientX;
-    startW = editorPane.offsetWidth;
+    dragging = true; startX = e.clientX; startW = editorPane.offsetWidth;
     resizer.classList.add('dragging');
     document.body.style.cursor = 'col-resize';
   });
-
   window.addEventListener('mousemove', e => {
     if (!dragging) return;
-    const delta = e.clientX - startX;
-    const newW = Math.max(200, Math.min(600, startW + delta));
+    const newW = Math.max(200, Math.min(700, startW + e.clientX - startX));
     editorPane.style.width = newW + 'px';
+    if (monacoEditor) monacoEditor.layout();
     if (renderer) renderer.resize();
   });
-
   window.addEventListener('mouseup', () => {
     if (!dragging) return;
-    dragging = false;
-    resizer.classList.remove('dragging');
+    dragging = false; resizer.classList.remove('dragging');
     document.body.style.cursor = '';
   });
 }
-
-// Initialize line numbers
-document.addEventListener('DOMContentLoaded', () => {
-  const ta = document.getElementById('vhdl-input');
-  if (ta.value) updateLineNumbers();
-});
   </script>
 </body>
 </html>
