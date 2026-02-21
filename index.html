@@ -1,13 +1,1558 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VHDL → Logisim</title>
+  <style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-size: 13px;
+  background: #c0c0c0;
+  overflow: hidden;
+  height: 100vh;
+  user-select: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Toolbar ── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 36px;
+  background: linear-gradient(180deg, #dde3ed 0%, #c8d0de 100%);
+  border-bottom: 1px solid #8a99b0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+
+#toolbar-left, #toolbar-center, #toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#logo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #2d3a50;
+  margin-right: 10px;
+}
+
+.tb-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  background: linear-gradient(180deg, #eef1f6 0%, #d8dde8 100%);
+  border: 1px solid #8a9ab0;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #2d3a50;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.tb-btn:hover {
+  background: linear-gradient(180deg, #f0f4fa 0%, #dde3f0 100%);
+}
+
+.tb-btn:active {
+  background: linear-gradient(180deg, #c8d0de 0%, #d8dde8 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+}
+
+#btn-synthesize {
+  background: linear-gradient(180deg, #5a8fd4 0%, #3a6eb4 100%);
+  border-color: #2a5594;
+  color: white;
+  font-weight: 600;
+}
+
+#btn-synthesize:hover {
+  background: linear-gradient(180deg, #6a9fe4 0%, #4a7ec4 100%);
+}
+
+#btn-synthesize:active {
+  background: linear-gradient(180deg, #3a6eb4 0%, #2a5594 100%);
+}
+
+#btn-synthesize.loading {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.tb-sep {
+  width: 1px;
+  height: 20px;
+  background: #8a99b0;
+  margin: 0 4px;
+}
+
+#zoom-label {
+  font-size: 11px;
+  color: #4a5a70;
+  min-width: 36px;
+  text-align: center;
+}
+
+#example-select {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid #8a9ab0;
+  border-radius: 3px;
+  background: white;
+  color: #2d3a50;
+  cursor: pointer;
+}
+
+/* ── Main Layout ── */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+#editor-pane {
+  width: 340px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f5f5f5;
+  border-right: 1px solid #999;
+}
+
+#resizer {
+  width: 4px;
+  background: #b0b8c8;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+#resizer:hover, #resizer.dragging { background: #5a8fd4; }
+
+#canvas-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #e8eaf0;
+}
+
+/* ── Pane Headers ── */
+.pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background: linear-gradient(180deg, #d4d8e4 0%, #c4c8d4 100%);
+  border-bottom: 1px solid #9aa0b0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #3a4a60;
+  flex-shrink: 0;
+}
+
+.status-ok { color: #2a8a2a; font-size: 14px; }
+.status-err { color: #cc2a2a; font-size: 14px; }
+
+/* ── VHDL Editor ── */
+#editor-wrap {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: #1e2127;
+}
+
+#line-numbers {
+  padding: 8px 6px 8px 8px;
+  background: #282c34;
+  color: #636d83;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: right;
+  min-width: 32px;
+  border-right: 1px solid #3a3f4b;
+  overflow: hidden;
+  white-space: pre;
+  user-select: none;
+  pointer-events: none;
+}
+
+#vhdl-input {
+  flex: 1;
+  background: #1e2127;
+  color: #abb2bf;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 8px 8px 8px 10px;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: auto;
+  caret-color: #528bff;
+  white-space: pre;
+  tab-size: 2;
+}
+
+#vhdl-input::selection { background: rgba(82, 139, 255, 0.3); }
+
+#error-panel {
+  padding: 8px 10px;
+  background: #2d1515;
+  border-top: 1px solid #6a2020;
+  color: #ff7070;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+/* ── Canvas Area ── */
+#canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+}
+
+#circuit-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  cursor: grab;
+}
+
+#circuit-canvas:active { cursor: grabbing; }
+
+/* ── Loading Overlay ── */
+#loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(200, 208, 220, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+#loading-box {
+  background: white;
+  border: 1px solid #8a99b0;
+  border-radius: 6px;
+  padding: 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: #3a4a60;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+
+.spinner {
+  width: 28px; height: 28px;
+  border: 3px solid #c8d0de;
+  border-top-color: #5a8fd4;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty Overlay ── */
+#empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+#empty-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #8a9ab0;
+  text-align: center;
+}
+
+#empty-box p { font-size: 13px; }
+
+/* ── Status Bar ── */
+#statusbar {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px 10px;
+  background: linear-gradient(180deg, #c4c8d4 0%, #b8bcc8 100%);
+  border-top: 1px solid #9aa0b0;
+  font-size: 11px;
+  color: #3a4a60;
+  flex-shrink: 0;
+  height: 22px;
+}
+
+.sb-sep {
+  margin: 0 8px;
+  color: #8a99b0;
+}
+
+#sb-entity { font-weight: 600; }
+
+#canvas-info {
+  font-size: 11px;
+  color: #5a6a80;
+}
+  </style>
 </head>
 <body>
-    <h1>Dead Dog Development</h1>
-    <p>Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark</p>
-    <p>Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark</p>
-    <p>Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark Bark</p>
+  <div id="app">
+    <div id="toolbar">
+      <div id="toolbar-left">
+        <div id="logo">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+            <rect x="1" y="1" width="20" height="20" rx="2" fill="#4a6ea8" stroke="#2d4f8a" stroke-width="1.5"/>
+            <text x="11" y="15" text-anchor="middle" fill="white" font-size="11" font-weight="bold" font-family="serif">L</text>
+          </svg>
+          <span>VHDL → Logisim</span>
+        </div>
+      </div>
+      <div id="toolbar-center">
+        <button class="tb-btn" id="btn-synthesize" onclick="synthesize()">
+          <svg width="14" height="14" viewBox="0 0 14 14"><polygon points="2,1 13,7 2,13" fill="currentColor"/></svg>
+          Synthesize
+        </button>
+        <div class="tb-sep"></div>
+        <button class="tb-btn" id="btn-zoom-in" onclick="zoom(1.2)" title="Zoom In">
+          <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="5" stroke="currentColor" fill="none" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="10" x2="13" y2="13" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <button class="tb-btn" id="btn-zoom-out" onclick="zoom(0.833)" title="Zoom Out">
+          <svg width="14" height="14" viewBox="0 0 14 14"><circle cx="6" cy="6" r="5" stroke="currentColor" fill="none" stroke-width="1.5"/><line x1="3" y1="6" x2="9" y2="6" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="10" x2="13" y2="13" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <button class="tb-btn" id="btn-fit" onclick="fitToScreen()" title="Fit to Screen">
+          <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="5" height="5" stroke="currentColor" fill="none" stroke-width="1.3"/><rect x="8" y="1" width="5" height="5" stroke="currentColor" fill="none" stroke-width="1.3"/><rect x="1" y="8" width="5" height="5" stroke="currentColor" fill="none" stroke-width="1.3"/><rect x="8" y="8" width="5" height="5" stroke="currentColor" fill="none" stroke-width="1.3"/></svg>
+        </button>
+        <div class="tb-sep"></div>
+        <span id="zoom-label">100%</span>
+      </div>
+      <div id="toolbar-right">
+        <select id="example-select" onchange="loadExample(this.value)">
+          <option value="">— Examples —</option>
+          <option value="half_adder">Half Adder</option>
+          <option value="full_adder">Full Adder</option>
+          <option value="mux4">4:1 MUX</option>
+          <option value="decoder">2:4 Decoder</option>
+          <option value="dff">D Flip-Flop</option>
+          <option value="comparator">1-bit Comparator</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="main">
+      <div id="editor-pane">
+        <div class="pane-header">
+          <span>VHDL Source</span>
+          <span id="editor-status" class="status-ok">●</span>
+        </div>
+        <div id="editor-wrap">
+          <div id="line-numbers"></div>
+          <textarea id="vhdl-input" spellcheck="false" autocomplete="off"
+            placeholder="-- Enter VHDL here..."></textarea>
+        </div>
+        <div id="error-panel" style="display:none"></div>
+      </div>
+
+      <div id="resizer"></div>
+
+      <div id="canvas-pane">
+        <div class="pane-header">
+          <span>Circuit Diagram</span>
+          <span id="canvas-info"></span>
+        </div>
+        <div id="canvas-wrap">
+          <canvas id="circuit-canvas"></canvas>
+          <div id="loading-overlay" style="display:none">
+            <div id="loading-box">
+              <div class="spinner"></div>
+              <div>Synthesizing circuit…</div>
+            </div>
+          </div>
+          <div id="empty-overlay">
+            <div id="empty-box">
+              <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                <rect x="4" y="4" width="40" height="40" rx="4" stroke="#aaa" stroke-width="2" fill="none" stroke-dasharray="6,3"/>
+                <path d="M16 24 L24 16 L32 24 L24 32 Z" stroke="#aaa" stroke-width="2" fill="none"/>
+                <circle cx="24" cy="24" r="3" fill="#aaa"/>
+              </svg>
+              <p>Write VHDL and click <strong>Synthesize</strong></p>
+              <p style="font-size:11px;color:#aaa;margin-top:4px">Ctrl+Enter to run</p>
+            </div>
+          </div>
+        </div>
+        <div id="statusbar">
+          <span id="sb-entity">No circuit loaded</span>
+          <span class="sb-sep">|</span>
+          <span id="sb-pos">x: 0, y: 0</span>
+          <span class="sb-sep">|</span>
+          <span id="sb-zoom">100%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+const EXAMPLES = {
+  half_adder: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity half_adder is
+  port (
+    a   : in  std_logic;
+    b   : in  std_logic;
+    sum : out std_logic;
+    cout: out std_logic
+  );
+end entity;
+
+architecture rtl of half_adder is
+begin
+  sum  <= a xor b;
+  cout <= a and b;
+end architecture;`,
+
+  full_adder: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity full_adder is
+  port (
+    a, b, cin : in  std_logic;
+    sum, cout : out std_logic
+  );
+end entity;
+
+architecture rtl of full_adder is
+  signal s1 : std_logic;
+  signal c1 : std_logic;
+  signal c2 : std_logic;
+begin
+  s1   <= a xor b;
+  sum  <= s1 xor cin;
+  c1   <= a and b;
+  c2   <= s1 and cin;
+  cout <= c1 or c2;
+end architecture;`,
+
+  mux4: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity mux4to1 is
+  port (
+    d0, d1, d2, d3 : in  std_logic;
+    sel0, sel1     : in  std_logic;
+    y              : out std_logic
+  );
+end entity;
+
+architecture rtl of mux4to1 is
+  signal ns0, ns1           : std_logic;
+  signal t0, t1, t2, t3     : std_logic;
+  signal or01, or23         : std_logic;
+begin
+  ns0 <= not sel0;
+  ns1 <= not sel1;
+  t0  <= d0 and ns1 and ns0;
+  t1  <= d1 and ns1 and sel0;
+  t2  <= d2 and sel1 and ns0;
+  t3  <= d3 and sel1 and sel0;
+  or01 <= t0 or t1;
+  or23 <= t2 or t3;
+  y   <= or01 or or23;
+end architecture;`,
+
+  decoder: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity decoder2to4 is
+  port (
+    a, b, en        : in  std_logic;
+    y0, y1, y2, y3  : out std_logic
+  );
+end entity;
+
+architecture rtl of decoder2to4 is
+  signal na, nb : std_logic;
+begin
+  na <= not a;
+  nb <= not b;
+  y0 <= en and na and nb;
+  y1 <= en and a  and nb;
+  y2 <= en and na and b;
+  y3 <= en and a  and b;
+end architecture;`,
+
+  dff: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity dff is
+  port (
+    d   : in  std_logic;
+    clk : in  std_logic;
+    rst : in  std_logic;
+    q   : out std_logic;
+    qn  : out std_logic
+  );
+end entity;
+
+architecture rtl of dff is
+begin
+  process(clk, rst)
+  begin
+    if rst = '1' then
+      q  <= '0';
+      qn <= '1';
+    elsif rising_edge(clk) then
+      q  <= d;
+      qn <= not d;
+    end if;
+  end process;
+end architecture;`,
+
+  comparator: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity comparator1bit is
+  port (
+    a, b   : in  std_logic;
+    eq, gt, lt : out std_logic
+  );
+end entity;
+
+architecture rtl of comparator1bit is
+  signal na, nb : std_logic;
+begin
+  na <= not a;
+  nb <= not b;
+  eq <= (a and b) or (na and nb);
+  gt <= a and nb;
+  lt <= na and b;
+end architecture;`
+};
+
+// ── Layout Engine ──────────────────────────────────────────────────────────
+// Converts a circuit netlist into positioned nodes using layered layout.
+
+const GRID = 20;           // Logisim uses 10px grid; we use 20px
+const GATE_W = 80;
+const GATE_H = 60;
+const DFF_W = 100;
+const DFF_H = 80;
+const PORT_W = 20;
+const PORT_H = 20;
+const COL_GAP = 100;       // horizontal gap between gate columns
+const ROW_GAP = 50;        // vertical gap between gates in same column
+
+/**
+ * Lay out the circuit.
+ * @param {Object} netlist - { entity, inputs, outputs, signals, gates, clocked }
+ * @returns {Object} layout - { nodes, wires, width, height }
+ */
+function layoutCircuit(netlist) {
+  const { inputs = [], outputs = [], gates = [] } = netlist;
+
+  // 1. Topological sort gates
+  const sorted = topoSortGates(gates, inputs);
+
+  // 2. Assign layers (columns) to each gate
+  const gateLayers = assignGateLayers(sorted, inputs);
+  const numGateLayers = Math.max(0, ...Object.values(gateLayers)) + 1;
+
+  // 3. Build columns
+  const columns = {};
+  sorted.forEach(g => {
+    const l = gateLayers[g.id];
+    if (!columns[l]) columns[l] = [];
+    columns[l].push(g);
+  });
+
+  // 4. Compute x positions for each column
+  // Col 0 = inputs, col 1..n = gate layers, col n+1 = outputs
+  const inputX = GRID * 4;
+  const firstGateX = inputX + PORT_W + COL_GAP;
+  const colX = {};
+  for (let i = 0; i < numGateLayers; i++) {
+    colX[i] = firstGateX + i * (GATE_W + COL_GAP);
+  }
+  const outputX = firstGateX + numGateLayers * (GATE_W + COL_GAP);
+
+  // 5. Position nodes
+  const nodes = [];
+  const wireEndpoints = {}; // wireName -> {x, y} (the output pin)
+
+  // Input ports
+  const totalInputH = inputs.length * (PORT_H + ROW_GAP) - ROW_GAP;
+  const estimatedMidY = Math.max(
+    inputs.length,
+    ...Object.values(columns).map(c => c.length)
+  ) * (GATE_H + ROW_GAP) / 2 + GRID * 4;
+
+  inputs.forEach((name, i) => {
+    const x = inputX;
+    const y = GRID * 4 + i * (PORT_H + ROW_GAP + 10);
+    nodes.push({ type: 'input', name, x, y, w: PORT_W, h: PORT_H });
+    wireEndpoints[name] = { x: x + PORT_W, y: y + PORT_H / 2 };
+  });
+
+  // Gate nodes
+  sorted.forEach(gate => {
+    const layer = gateLayers[gate.id];
+    const col = columns[layer];
+    const idx = col.indexOf(gate);
+    const isFF = gate.type === 'DFF' || gate.type === 'JKFF' || gate.type === 'SRFF';
+    const gw = isFF ? DFF_W : GATE_W;
+    const gh = isFF ? DFF_H : GATE_H;
+    const x = colX[layer];
+    const y = GRID * 4 + idx * (gh + ROW_GAP);
+
+    nodes.push({ type: 'gate', gate, x, y, w: gw, h: gh });
+
+    // Output pin is on the right edge, vertically centered
+    wireEndpoints[gate.output] = { x: x + gw, y: y + gh / 2 };
+  });
+
+  // Output ports
+  outputs.forEach((name, i) => {
+    const x = outputX;
+    const y = GRID * 4 + i * (PORT_H + ROW_GAP + 10);
+    nodes.push({ type: 'output', name, x, y, w: PORT_W, h: PORT_H });
+  });
+
+  // 6. Build wires
+  const wires = [];
+
+  // Gate input wires
+  sorted.forEach(gate => {
+    const node = nodes.find(n => n.type === 'gate' && n.gate === gate);
+    if (!node) return;
+    const isFF = gate.type === 'DFF';
+    const numInputs = gate.inputs.length;
+
+    gate.inputs.forEach((srcName, pinIdx) => {
+      const src = wireEndpoints[srcName];
+      if (!src) return;
+      const dst = getInputPin(node, pinIdx, numInputs, isFF);
+      wires.push({ from: src, to: dst, name: srcName });
+    });
+  });
+
+  // Output port wires
+  outputs.forEach((name, i) => {
+    const src = wireEndpoints[name];
+    const node = nodes.find(n => n.type === 'output' && n.name === name);
+    if (!src || !node) return;
+    const dst = { x: node.x, y: node.y + node.h / 2 };
+    wires.push({ from: src, to: dst, name });
+  });
+
+  // 7. Compute canvas size
+  const allX = nodes.map(n => n.x + n.w);
+  const allY = nodes.map(n => n.y + n.h);
+  const width = Math.max(...allX) + GRID * 8;
+  const height = Math.max(...allY) + GRID * 8;
+
+  return { nodes, wires, width, height };
+}
+
+function getInputPin(node, pinIdx, numPins, isFF) {
+  const { x, y, w, h } = node;
+  if (isFF) {
+    // DFF: D at top-left area, CLK in middle-left, RST at bottom-left
+    const pins = [
+      { x, y: y + h * 0.25 },   // D
+      { x, y: y + h * 0.6  },   // CLK
+      { x, y: y + h * 0.85 },   // RST
+    ];
+    return pins[Math.min(pinIdx, pins.length - 1)];
+  }
+  if (numPins === 1) return { x, y: y + h / 2 };
+  const spacing = h / (numPins + 1);
+  return { x, y: y + spacing * (pinIdx + 1) };
+}
+
+function topoSortGates(gates, inputs) {
+  const available = new Set(inputs);
+  const remaining = [...gates];
+  const sorted = [];
+  let limit = gates.length * gates.length + 10;
+
+  while (remaining.length > 0 && limit-- > 0) {
+    let placed = false;
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].inputs.every(inp => available.has(inp))) {
+        const [g] = remaining.splice(i, 1);
+        sorted.push(g);
+        available.add(g.output);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      // Break cycle
+      const g = remaining.shift();
+      sorted.push(g);
+      available.add(g.output);
+    }
+  }
+  return sorted;
+}
+
+function assignGateLayers(sorted, inputs) {
+  const layers = {};
+  const wireLayer = {};
+  inputs.forEach(i => (wireLayer[i] = 0));
+
+  sorted.forEach(gate => {
+    const depLayer = gate.inputs.reduce((max, inp) => Math.max(max, wireLayer[inp] || 0), 0);
+    const layer = depLayer;
+    layers[gate.id] = layer;
+    wireLayer[gate.output] = layer + 1;
+  });
+  return layers;
+}
+
+// ── Logisim-style Circuit Renderer ─────────────────────────────────────────
+
+// Logisim color palette
+const C = {
+  wire:       '#1a1aff',   // classic Logisim blue wire
+  wireActive: '#00cc00',
+  gateFill:   '#ffffff',
+  gateStroke: '#000000',
+  gateStrokeW: 2,
+  portFill:   '#00cc00',
+  portStroke: '#006600',
+  inputFill:  '#ffffff',
+  inputStroke:'#000000',
+  outputFill: '#ffffff',
+  outputStroke:'#000000',
+  pinDot:     '#1a1aff',
+  label:      '#000000',
+  labelFont:  '11px sans-serif',
+  titleFont:  'bold 12px sans-serif',
+  pinFont:    '10px sans-serif',
+  bg:         '#ffffff',
+  grid:       '#e8eaee',
+  gridMaj:    '#d0d4dc',
+  notBubble:  '#ffffff',
+  dffBg:      '#f0f0f0',
+  shadowColor:'rgba(0,0,0,0.08)',
+};
+
+class CircuitRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.layout = null;
+    this.scale = 1;
+    this.offsetX = 40;
+    this.offsetY = 40;
+    this._dragging = false;
+    this._lastMX = 0;
+    this._lastMY = 0;
+
+    this._bindEvents();
+  }
+
+  _bindEvents() {
+    const c = this.canvas;
+    c.addEventListener('mousedown', e => {
+      this._dragging = true;
+      this._lastMX = e.clientX;
+      this._lastMY = e.clientY;
+    });
+    window.addEventListener('mouseup', () => { this._dragging = false; });
+    window.addEventListener('mousemove', e => {
+      if (!this._dragging) {
+        // Update status bar position
+        const rect = c.getBoundingClientRect();
+        const cx = (e.clientX - rect.left - this.offsetX) / this.scale;
+        const cy = (e.clientY - rect.top - this.offsetY) / this.scale;
+        const sbPos = document.getElementById('sb-pos');
+        if (sbPos) sbPos.textContent = `x: ${Math.round(cx)}, y: ${Math.round(cy)}`;
+        return;
+      }
+      const dx = e.clientX - this._lastMX;
+      const dy = e.clientY - this._lastMY;
+      this.offsetX += dx;
+      this.offsetY += dy;
+      this._lastMX = e.clientX;
+      this._lastMY = e.clientY;
+      this.draw();
+    });
+    c.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      this.offsetX = mx - (mx - this.offsetX) * factor;
+      this.offsetY = my - (my - this.offsetY) * factor;
+      this.scale *= factor;
+      this.scale = Math.max(0.2, Math.min(4, this.scale));
+      this.draw();
+      updateZoomLabel();
+    }, { passive: false });
+  }
+
+  setLayout(layout) {
+    this.layout = layout;
+    this.fitToContent();
+    this.draw();
+  }
+
+  fitToContent() {
+    if (!this.layout) return;
+    const wrap = this.canvas.parentElement;
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    const sx = (W - 80) / this.layout.width;
+    const sy = (H - 80) / this.layout.height;
+    this.scale = Math.min(sx, sy, 1.5);
+    this.scale = Math.max(0.3, this.scale);
+    const cw = this.layout.width * this.scale;
+    const ch = this.layout.height * this.scale;
+    this.offsetX = (W - cw) / 2;
+    this.offsetY = (H - ch) / 2;
+  }
+
+  resize() {
+    const wrap = this.canvas.parentElement;
+    this.canvas.width = wrap.clientWidth;
+    this.canvas.height = wrap.clientHeight;
+    this.draw();
+  }
+
+  draw() {
+    const { canvas, ctx, layout } = this;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid
+    this._drawGrid();
+
+    if (!layout) return;
+
+    ctx.save();
+    ctx.translate(this.offsetX, this.offsetY);
+    ctx.scale(this.scale, this.scale);
+
+    // Draw wires first (below gates)
+    layout.wires.forEach(w => this._drawWire(w));
+
+    // Draw nodes
+    layout.nodes.forEach(n => {
+      if (n.type === 'gate') this._drawGate(n);
+      else if (n.type === 'input') this._drawInputPort(n);
+      else if (n.type === 'output') this._drawOutputPort(n);
+    });
+
+    ctx.restore();
+  }
+
+  _drawGrid() {
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const gridSize = 20 * this.scale;
+    if (gridSize < 6) return;
+
+    const ox = ((this.offsetX % gridSize) + gridSize) % gridSize;
+    const oy = ((this.offsetY % gridSize) + gridSize) % gridSize;
+
+    ctx.save();
+    for (let x = ox; x < W; x += gridSize) {
+      for (let y = oy; y < H; y += gridSize) {
+        const isMaj = Math.abs(Math.round((x - this.offsetX) / gridSize)) % 5 === 0 &&
+                      Math.abs(Math.round((y - this.offsetY) / gridSize)) % 5 === 0;
+        ctx.fillStyle = isMaj ? C.gridMaj : C.grid;
+        ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  _drawWire(wire) {
+    const ctx = this.ctx;
+    const { from, to } = wire;
+
+    ctx.save();
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Orthogonal routing: horizontal then vertical then horizontal
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+
+    const midX = from.x + (to.x - from.x) * 0.5;
+    if (Math.abs(from.y - to.y) < 2) {
+      // Straight horizontal
+      ctx.lineTo(to.x, to.y);
+    } else {
+      ctx.lineTo(midX, from.y);
+      ctx.lineTo(midX, to.y);
+      ctx.lineTo(to.x, to.y);
+    }
+
+    ctx.stroke();
+
+    // Draw junction dot if wire branches (simplified: just at endpoints)
+    ctx.restore();
+  }
+
+  _drawInputPort(node) {
+    const ctx = this.ctx;
+    const { x, y, name } = node;
+    const size = 16;
+
+    ctx.save();
+
+    // Pin circle (Logisim style: small filled circle)
+    ctx.fillStyle = C.portFill;
+    ctx.strokeStyle = C.portStroke;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label to the left
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, x - 4, y + size/2);
+
+    ctx.restore();
+  }
+
+  _drawOutputPort(node) {
+    const ctx = this.ctx;
+    const { x, y, name } = node;
+    const size = 16;
+
+    ctx.save();
+
+    // Square output port (Logisim style)
+    ctx.fillStyle = '#ffff88';
+    ctx.strokeStyle = C.outputStroke;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    roundRect(ctx, x, y, size, size, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label to the right
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, x + size + 4, y + size/2);
+
+    ctx.restore();
+  }
+
+  _drawGate(node) {
+    const { gate, x, y, w, h } = node;
+    const ctx = this.ctx;
+    const type = gate.type.toUpperCase();
+
+    ctx.save();
+
+    if (type === 'DFF' || type === 'JKFF' || type === 'SRFF') {
+      this._drawDFF(gate, x, y, w, h);
+    } else if (type === 'MUX') {
+      this._drawMUX(gate, x, y, w, h);
+    } else if (type === 'AND' || type === 'NAND') {
+      this._drawAND(gate, x, y, w, h, type === 'NAND');
+    } else if (type === 'OR' || type === 'NOR') {
+      this._drawOR(gate, x, y, w, h, type === 'NOR', false);
+    } else if (type === 'XOR' || type === 'XNOR') {
+      this._drawOR(gate, x, y, w, h, type === 'XNOR', true);
+    } else if (type === 'NOT' || type === 'BUFFER') {
+      this._drawNOT(gate, x, y, w, h, type === 'NOT');
+    } else {
+      this._drawBox(gate, x, y, w, h);
+    }
+
+    ctx.restore();
+  }
+
+  _drawAND(gate, x, y, w, h, inverted) {
+    const ctx = this.ctx;
+    const cx = x;
+    const cy = y;
+    const bw = w * 0.85;
+    const bh = h;
+    const r = bh / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + bw - r, cy);
+    ctx.arc(cx + bw - r, cy + r, r, -Math.PI/2, Math.PI/2);
+    ctx.lineTo(cx, cy + bh);
+    ctx.closePath();
+    ctx.fillStyle = C.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.stroke();
+
+    // Input pins (left side)
+    this._drawInputPins(gate, cx, cy, bh);
+
+    // Output
+    const outX = cx + bw;
+    const outY = cy + r;
+    if (inverted) {
+      ctx.beginPath();
+      ctx.arc(outX + 5, outY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.notBubble;
+      ctx.fill();
+      ctx.strokeStyle = C.gateStroke;
+      ctx.lineWidth = C.gateStrokeW;
+      ctx.stroke();
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX + 9, outY); ctx.lineTo(outX + 15, outY); ctx.stroke();
+    } else {
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX, outY); ctx.lineTo(outX + 10, outY); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawOR(gate, x, y, w, h, inverted, xor) {
+    const ctx = this.ctx;
+    const bh = h;
+    const bw = w * 0.88;
+
+    ctx.save();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.fillStyle = C.gateFill;
+
+    const drawBody = (ox) => {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y);
+      ctx.bezierCurveTo(x + ox + bw * 0.4, y, x + ox + bw, y + bh * 0.1, x + ox + bw, y + bh / 2);
+      ctx.bezierCurveTo(x + ox + bw, y + bh * 0.9, x + ox + bw * 0.4, y + bh, x + ox, y + bh);
+      ctx.bezierCurveTo(x + ox + bw * 0.25, y + bh * 0.75, x + ox + bw * 0.25, y + bh * 0.25, x + ox, y);
+      ctx.closePath();
+    };
+
+    // XOR extra arc
+    if (xor) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y);
+      ctx.bezierCurveTo(x + bw * 0.2, y + bh * 0.25, x + bw * 0.2, y + bh * 0.75, x - 5, y + bh);
+      ctx.strokeStyle = C.gateStroke;
+      ctx.lineWidth = C.gateStrokeW;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    drawBody(0);
+    ctx.fill();
+    ctx.stroke();
+
+    // Input pins
+    this._drawInputPins(gate, x, y, bh);
+
+    // Output
+    const outX = x + bw;
+    const outY = y + bh / 2;
+    if (inverted) {
+      ctx.beginPath();
+      ctx.arc(outX + 5, outY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.notBubble;
+      ctx.fill();
+      ctx.strokeStyle = C.gateStroke;
+      ctx.lineWidth = C.gateStrokeW;
+      ctx.stroke();
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX + 9, outY); ctx.lineTo(outX + 15, outY); ctx.stroke();
+    } else {
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX, outY); ctx.lineTo(outX + 10, outY); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawNOT(gate, x, y, w, h, inverted) {
+    const ctx = this.ctx;
+    const tw = w * 0.7;
+    const mid = y + h / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + tw, mid);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+    ctx.fillStyle = C.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.stroke();
+
+    if (inverted) {
+      ctx.beginPath();
+      ctx.arc(x + tw + 5, mid, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.notBubble;
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Input stub
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 10, mid); ctx.lineTo(x, mid); ctx.stroke();
+    // Output stub
+    ctx.beginPath();
+    if (inverted) {
+      ctx.moveTo(x + tw + 9, mid); ctx.lineTo(x + tw + 15, mid);
+    } else {
+      ctx.moveTo(x + tw, mid); ctx.lineTo(x + tw + 10, mid);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawDFF(gate, x, y, w, h) {
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.fillStyle = C.dffBg;
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    roundRect(ctx, x, y, w, h, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Title
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('D', x + w / 2, y + 4);
+
+    // Clock triangle
+    const ckY = y + h * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(x, ckY - 5);
+    ctx.lineTo(x + 10, ckY);
+    ctx.lineTo(x, ckY + 5);
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Pin labels
+    ctx.font = C.pinFont;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const pins = gate.inputs.slice(0, 3);
+    const pinLabels = ['D', '>', 'R'];
+    const pinYs = [h * 0.25, h * 0.55, h * 0.82];
+    pins.forEach((_, i) => {
+      ctx.fillStyle = '#333';
+      ctx.fillText(pinLabels[i] || pins[i], x + 4, y + pinYs[i]);
+      // Stub
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, y + pinYs[i]);
+      ctx.lineTo(x, y + pinYs[i]);
+      ctx.stroke();
+    });
+
+    // Output labels
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#333';
+    ctx.fillText('Q', x + w - 4, y + h * 0.3);
+    // Output stub
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h * 0.3);
+    ctx.lineTo(x + w + 10, y + h * 0.3);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawMUX(gate, x, y, w, h) {
+    const ctx = this.ctx;
+    const sh = h * 0.15; // shear
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y + sh);
+    ctx.lineTo(x + w, y + h - sh);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+    ctx.fillStyle = C.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.stroke();
+
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('MUX', x + w / 2, y + h / 2);
+
+    this._drawInputPins(gate, x, y, h);
+    // Output
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h / 2);
+    ctx.lineTo(x + w + 10, y + h / 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawBox(gate, x, y, w, h) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = C.gateFill;
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    roundRect(ctx, x, y, w, h, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gate.type, x + w / 2, y + h / 2);
+
+    this._drawInputPins(gate, x, y, h);
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h / 2);
+    ctx.lineTo(x + w + 10, y + h / 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawInputPins(gate, x, y, h) {
+    const ctx = this.ctx;
+    const n = gate.inputs.length;
+    for (let i = 0; i < n; i++) {
+      const py = n === 1 ? y + h / 2 : y + h * (i + 1) / (n + 1);
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, py);
+      ctx.lineTo(x, py);
+      ctx.stroke();
+    }
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ── App Controller ──────────────────────────────────────────────────────────
+
+let renderer;
+let currentNetlist = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+window.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('circuit-canvas');
+  renderer = new CircuitRenderer(canvas);
+  renderer.resize();
+
+  // Pane resizer
+  initResizer();
+
+  // Line numbers
+  const ta = document.getElementById('vhdl-input');
+  ta.addEventListener('input', updateLineNumbers);
+  ta.addEventListener('scroll', syncLineNumberScroll);
+
+  // Load default example
+  loadExample('half_adder');
+
+  // Keyboard shortcut
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      synthesize();
+    }
+  });
+});
+
+window.addEventListener('resize', () => {
+  if (renderer) renderer.resize();
+});
+
+// ── Example loader ────────────────────────────────────────────────────────
+
+function loadExample(name) {
+  if (!name || !EXAMPLES[name]) return;
+  document.getElementById('vhdl-input').value = EXAMPLES[name];
+  updateLineNumbers();
+  document.getElementById('example-select').value = '';
+}
+
+// ── Synthesize ────────────────────────────────────────────────────────────
+
+async function synthesize() {
+  const vhdl = document.getElementById('vhdl-input').value.trim();
+  if (!vhdl) return;
+
+  const btn = document.getElementById('btn-synthesize');
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const emptyOverlay = document.getElementById('empty-overlay');
+  const errorPanel = document.getElementById('error-panel');
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+  loadingOverlay.style.display = 'flex';
+  errorPanel.style.display = 'none';
+  document.getElementById('editor-status').className = 'status-ok';
+
+  try {
+    const netlist = await callClaudeAPI(vhdl);
+    currentNetlist = netlist;
+
+    const layout = layoutCircuit(netlist);
+    renderer.setLayout(layout);
+
+    emptyOverlay.style.display = 'none';
+
+    // Update info
+    const entity = (netlist.entity || 'unknown').toUpperCase();
+    const gates = (netlist.gates || []).length;
+    const ports = (netlist.inputs || []).length + (netlist.outputs || []).length;
+    document.getElementById('sb-entity').textContent =
+      `${entity}  ·  ${gates} gate${gates !== 1 ? 's' : ''}  ·  ${ports} port${ports !== 1 ? 's' : ''}`;
+    document.getElementById('canvas-info').textContent =
+      `${(netlist.inputs||[]).length} in, ${(netlist.outputs||[]).length} out`;
+
+  } catch (err) {
+    errorPanel.textContent = '✕ ' + err.message;
+    errorPanel.style.display = 'block';
+    document.getElementById('editor-status').className = 'status-err';
+    console.error(err);
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    loadingOverlay.style.display = 'none';
+  }
+}
+
+// ── Claude API ────────────────────────────────────────────────────────────
+
+async function callClaudeAPI(vhdl) {
+  const systemPrompt = `You are a VHDL synthesis tool. Convert VHDL code into a circuit netlist JSON.
+
+RULES:
+1. Return ONLY valid JSON. No markdown, no backticks, no explanation.
+2. Every signal/wire must have exactly one gate driving it (except primary inputs).
+3. Gate types allowed: AND, OR, NOT, XOR, NAND, NOR, XNOR, BUFFER, DFF, MUX
+4. NOT gates have exactly 1 input.
+5. DFF inputs order: ["d", "clk"] or ["d", "clk", "rst"]. Output is the Q signal name.
+6. Each gate needs a unique id like "g1", "g2", etc.
+7. Signal/wire names should come from the VHDL (use actual signal names from the code).
+8. For clocked processes (rising_edge, falling_edge), use DFF gates.
+9. For conditional signal assignments (when/else or if/else), use MUX gates.
+10. Decompose complex operations into primitive gates.
+
+JSON structure:
+{
+  "entity": "entity_name",
+  "inputs": ["port1", "port2"],
+  "outputs": ["out1"],
+  "signals": ["sig1", "sig2"],
+  "gates": [
+    {
+      "id": "g1",
+      "type": "AND",
+      "inputs": ["a", "b"],
+      "output": "sig1"
+    }
+  ],
+  "clocked": false
+}`;
+
+  const userPrompt = `Convert this VHDL to a circuit netlist JSON:\n\n${vhdl}`;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`API error ${response.status}: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  const text = data.content.map(b => b.text || '').join('').trim();
+
+  // Strip any accidental markdown fences
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
+  let netlist;
+  try {
+    netlist = JSON.parse(clean);
+  } catch (e) {
+    throw new Error('Could not parse AI response as JSON. Try simplifying your VHDL.');
+  }
+
+  // Validate minimally
+  if (!netlist.gates || !netlist.inputs || !netlist.outputs) {
+    throw new Error('Invalid netlist structure from AI. Missing gates, inputs, or outputs.');
+  }
+
+  return netlist;
+}
+
+// ── Zoom controls ─────────────────────────────────────────────────────────
+
+function zoom(factor) {
+  if (!renderer) return;
+  const wrap = document.getElementById('canvas-wrap');
+  const W = wrap.clientWidth / 2;
+  const H = wrap.clientHeight / 2;
+  renderer.offsetX = W - (W - renderer.offsetX) * factor;
+  renderer.offsetY = H - (H - renderer.offsetY) * factor;
+  renderer.scale *= factor;
+  renderer.scale = Math.max(0.2, Math.min(4, renderer.scale));
+  renderer.draw();
+  updateZoomLabel();
+}
+
+function fitToScreen() {
+  if (!renderer || !renderer.layout) return;
+  renderer.fitToContent();
+  renderer.draw();
+  updateZoomLabel();
+}
+
+function updateZoomLabel() {
+  if (!renderer) return;
+  const pct = Math.round(renderer.scale * 100) + '%';
+  document.getElementById('zoom-label').textContent = pct;
+  document.getElementById('sb-zoom').textContent = pct;
+}
+
+// ── Line numbers ──────────────────────────────────────────────────────────
+
+function updateLineNumbers() {
+  const ta = document.getElementById('vhdl-input');
+  const ln = document.getElementById('line-numbers');
+  const lines = ta.value.split('\n').length;
+  ln.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
+}
+
+function syncLineNumberScroll() {
+  const ta = document.getElementById('vhdl-input');
+  const ln = document.getElementById('line-numbers');
+  ln.scrollTop = ta.scrollTop;
+}
+
+// ── Resizer ───────────────────────────────────────────────────────────────
+
+function initResizer() {
+  const resizer = document.getElementById('resizer');
+  const editorPane = document.getElementById('editor-pane');
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true;
+    startX = e.clientX;
+    startW = editorPane.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const delta = e.clientX - startX;
+    const newW = Math.max(200, Math.min(600, startW + delta));
+    editorPane.style.width = newW + 'px';
+    if (renderer) renderer.resize();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+  });
+}
+
+// Initialize line numbers
+document.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('vhdl-input');
+  if (ta.value) updateLineNumbers();
+});
+  </script>
 </body>
 </html>
