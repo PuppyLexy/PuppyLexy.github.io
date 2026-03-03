@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lexy Goad — Resume</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0a0b;
+      --surface: #111114;
+      --border: #1e1e24;
+      --accent: #c8f542;
+      --accent2: #42d4f5;
+      --text: #e8e8ec;
+      --muted: #666676;
+      --mono: 'Space Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-weight: 300;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* noise overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 60px 32px 100px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 40px;
+      margin-bottom: 60px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: end;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    .name {
+      font-family: var(--mono);
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: var(--text);
+    }
+
+    .name span {
+      color: var(--accent);
+    }
+
+    .tagline {
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      margin-top: 10px;
+      letter-spacing: 0.05em;
+    }
+
+    .contact-block {
+      text-align: right;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 2;
+    }
+
+    .contact-block a {
+      color: var(--accent2);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .contact-block a:hover { color: var(--accent); }
+
+    /* ── Summary ── */
+    .summary {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 24px 28px;
+      border-radius: 2px;
+      margin-bottom: 60px;
+      font-size: 0.95rem;
+      color: #c0c0cc;
+      animation: fadeUp 0.6s 0.1s ease both;
+    }
+
+    /* ── Section ── */
+    section {
+      margin-bottom: 56px;
+      animation: fadeUp 0.6s ease both;
+    }
+
+    section:nth-child(3) { animation-delay: 0.15s; }
+    section:nth-child(4) { animation-delay: 0.2s; }
+    section:nth-child(5) { animation-delay: 0.25s; }
+    section:nth-child(6) { animation-delay: 0.3s; }
+    section:nth-child(7) { animation-delay: 0.35s; }
+
+    .section-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Job Card ── */
+    .job {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 0 32px;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+
+    .job:last-child { border-bottom: none; }
+
+    .job:hover .job-title { color: var(--accent); }
+
+    .job-meta {
+      padding-top: 3px;
+    }
+
+    .job-date {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .job-title {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text);
+      transition: color 0.2s;
+      margin-bottom: 2px;
+    }
+
+    .job-org {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent2);
+      margin-bottom: 12px;
+    }
+
+    .job-bullets {
+      list-style: none;
+      font-size: 0.88rem;
+      color: #a0a0b0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .job-bullets li {
+      padding-left: 16px;
+      position: relative;
+    }
+
+    .job-bullets li::before {
+      content: '›';
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* ── Skills Grid ── */
+    .skills-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .skill-group h4 {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .skill-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      font-size: 0.72rem;
+      font-family: var(--mono);
+      padding: 4px 10px;
+      border-radius: 2px;
+      color: #b0b0c0;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .tag:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Certs ── */
+    .cert-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    .cert {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+      border-radius: 2px;
+      transition: border-color 0.2s;
+    }
+
+    .cert:hover { border-color: var(--accent2); }
+
+    .cert-name {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .cert-date {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    /* ── Education ── */
+    .edu-item {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .edu-item:last-child { border-bottom: none; }
+
+    .edu-degree {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .edu-school {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent2);
+      margin: 4px 0 2px;
+    }
+
+    .edu-date {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+
+    /* ── Download CTA ── */
+    .cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 60px;
+      background: var(--accent);
+      color: #0a0a0b;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 14px 28px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.15s;
+    }
+
+    .cta:hover { background: #d9ff55; transform: translateY(-2px); }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 600px) {
+      header { grid-template-columns: 1fr; }
+      .contact-block { text-align: left; }
+      .job { grid-template-columns: 1fr; gap: 8px; }
+      .job-meta { order: 2; }
+      .job-date { display: inline; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <header>
+    <div>
+      <div class="name">Lexy <span>Goad</span></div>
+      <div class="tagline">// Radiological Controls · EHS · Nuclear &amp; Pharma</div>
+    </div>
+    <div class="contact-block">
+      Memphis, TN<br>
+      <a href="mailto:lexy.goad@gmail.com">lexy.goad@gmail.com</a><br>
+      <a href="tel:+19017151012">+1 (901) 715-1012</a><br>
+      <a href="https://deaddog.dev">deaddog.dev</a>
+    </div>
+  </header>
+
+  <!-- Summary -->
+  <div class="summary">
+    Radiological Controls Technician with 2+ years of experience in radiation safety, environmental health,
+    and regulatory compliance across nuclear, pharmaceutical, and industrial environments. Proven track record
+    in safety audits, environmental monitoring, hazardous materials management, and DOE/DoD · NRC · OSHA · EPA · DOT
+    compliant documentation. Strong data analysis background with hands-on leadership experience.
+  </div>
+
+  <!-- Experience -->
+  <section>
+    <div class="section-label">Experience</div>
+
+    <div class="job">
+      <div class="job-meta">
+        <div class="job-date">Nov 2024 –<br>Nov 2025</div>
+      </div>
+      <div>
+        <div class="job-title">Radiological Controls Technician</div>
+        <div class="job-org">US Navy · Bremerton Naval Station, WA</div>
+        <ul class="job-bullets">
+          <li>Ensured compliance with radiation safety practices under 10 CFR Part 20 dose limitations</li>
+          <li>Conducted QA checks on equipment and PPE, coordinating logistics for radioactive material transport under 49 CFR DOT</li>
+          <li>Monitored air quality with specialized instrumentation; implemented corrective measures as required</li>
+          <li>Provided technical support for decontamination planning for contaminated equipment and facilities</li>
+          <li>Led and oversaw teams of 6 personnel; delivered hazmat handling briefings to military support staff</li>
+          <li>Certified radiation and contamination worker; precision measurement tools proficient</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-meta">
+        <div class="job-date">Nov 2023 –<br>Apr 2024</div>
+      </div>
+      <div>
+        <div class="job-title">Environmental Field Chemist</div>
+        <div class="job-org">Clean Harbors · Kent, WA</div>
+        <ul class="job-bullets">
+          <li>Managed and analyzed environmental data ensuring regulatory compliance</li>
+          <li>Developed and maintained chemical management databases for environmental regulation tracking</li>
+          <li>Cross-department team coordination for field chemistry operations</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-meta">
+        <div class="job-date">Apr 2023 –<br>Nov 2023</div>
+      </div>
+      <div>
+        <div class="job-title">Nuclear Pharmaceutical Manufacturing Technician</div>
+        <div class="job-org">Cardinal Health · Seattle, WA</div>
+        <ul class="job-bullets">
+          <li>Performed gas chromatography, TLC, and QC analysis on radiopharmaceutical products</li>
+          <li>Aseptic production of biopharmaceuticals in ISO 7 cleanroom; maintained cGMP and GDP standards</li>
+          <li>Radioactive isotope handling; radiation safety and ALARA training; DOT 49 CFR shipments</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-meta">
+        <div class="job-date">Apr 2023 –<br>Nov 2023</div>
+      </div>
+      <div>
+        <div class="job-title">EHS Coordinator</div>
+        <div class="job-org">Cardinal Health · Seattle, WA</div>
+        <ul class="job-bullets">
+          <li>Developed and oversaw site-wide EHS programs ensuring federal, state, and local compliance</li>
+          <li>Conducted safety audits, inspections, and risk assessments; implemented corrective measures</li>
+          <li>Maintained comprehensive EHS documentation: incident reports, training records, compliance materials</li>
+          <li>Managed lab supplies and inventory tracking via SAP</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-meta">
+        <div class="job-date">Nov 2022 –<br>Feb 2023</div>
+      </div>
+      <div>
+        <div class="job-title">Lab Analyst</div>
+        <div class="job-org">IEH Laboratories · Memphis, TN</div>
+        <ul class="job-bullets">
+          <li>Conducted microbial testing and QC assessments with focus on data accuracy</li>
+          <li>Automated sample preparation data logging with Python, reducing manual entry errors</li>
+          <li>Maintained laboratory data in Excel in compliance with OSHA and GMP standards</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="job">
+      <div class="job-meta">
+        <div class="job-date">May 2018 –<br>Jun 2022</div>
+      </div>
+      <div>
+        <div class="job-title">Pharmacy Technician</div>
+        <div class="job-org">Kroger · Memphis, TN</div>
+        <ul class="job-bullets">
+          <li>Managed patient data and prescription records under HIPAA compliance</li>
+          <li>Medication inventory management, billing, and insurance coordination</li>
+          <li>P-waste management; state and federal drug regulatory compliance</li>
+        </ul>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- Skills -->
+  <section>
+    <div class="section-label">Skills &amp; Expertise</div>
+    <div class="skills-grid">
+      <div class="skill-group">
+        <h4>Regulatory</h4>
+        <div class="skill-tags">
+          <span class="tag">DOE/DoD</span>
+          <span class="tag">NRC</span>
+          <span class="tag">OSHA</span>
+          <span class="tag">EPA</span>
+          <span class="tag">DOT 49 CFR</span>
+          <span class="tag">10 CFR Part 20</span>
+          <span class="tag">cGMP / GDP</span>
+          <span class="tag">HIPAA</span>
+        </div>
+      </div>
+      <div class="skill-group">
+        <h4>Lab &amp; Safety</h4>
+        <div class="skill-tags">
+          <span class="tag">Radiation Monitoring</span>
+          <span class="tag">ALARA</span>
+          <span class="tag">Gas Chromatography</span>
+          <span class="tag">TLC</span>
+          <span class="tag">Aseptic Technique</span>
+          <span class="tag">Microbial Testing</span>
+          <span class="tag">PPE Compliance</span>
+          <span class="tag">Decontamination</span>
+        </div>
+      </div>
+      <div class="skill-group">
+        <h4>Data &amp; Tools</h4>
+        <div class="skill-tags">
+          <span class="tag">Python</span>
+          <span class="tag">Excel</span>
+          <span class="tag">SAP</span>
+          <span class="tag">Data Analysis</span>
+          <span class="tag">Risk Assessment</span>
+          <span class="tag">EHS Documentation</span>
+        </div>
+      </div>
+      <div class="skill-group">
+        <h4>Operations</h4>
+        <div class="skill-tags">
+          <span class="tag">Team Leadership</span>
+          <span class="tag">Safety Audits</span>
+          <span class="tag">Hazmat Logistics</span>
+          <span class="tag">Inventory Management</span>
+          <span class="tag">Air Quality Monitoring</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Certifications -->
+  <section>
+    <div class="section-label">Certifications</div>
+    <div class="cert-list">
+      <div class="cert">
+        <div class="cert-name">Confined Space Certification</div>
+        <div class="cert-date">Jan 2025 – Present · US Navy</div>
+      </div>
+      <div class="cert">
+        <div class="cert-name">HAZWOPER (OSHA 40-Hour)</div>
+        <div class="cert-date">Dec 2023 – Present · Clean Harbors</div>
+      </div>
+      <div class="cert">
+        <div class="cert-name">Radiation &amp; Contamination Worker</div>
+        <div class="cert-date">Active · US Navy</div>
+      </div>
+      <div class="cert">
+        <div class="cert-name">CPR Certification</div>
+        <div class="cert-date">Active</div>
+      </div>
+      <div class="cert">
+        <div class="cert-name">First Aid Certification</div>
+        <div class="cert-date">Active</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Education -->
+  <section>
+    <div class="section-label">Education</div>
+    <div class="edu-item">
+      <div class="edu-degree">B.S. Biology · Minor in Anthropology</div>
+      <div class="edu-school">University of Memphis · Memphis, TN</div>
+      <div class="edu-date">Aug 2017 – Dec 2022</div>
+    </div>
+    <div class="edu-item" style="border-bottom:none">
+      <div class="edu-degree">Graduate Research — Biomedical Data Analysis</div>
+      <div class="edu-school">University of Memphis · Mentored by Dr. Steven Strain</div>
+      <div class="edu-date">Aug 2017 – May 2018</div>
+    </div>
+  </section>
+
+  <a class="cta" href="mailto:lexy.goad@gmail.com">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 4h16v16H4z"/><polyline points="22,6 12,13 2,6"/></svg>
+    Get in touch
+  </a>
+
+</div>
+</body>
+</html>
