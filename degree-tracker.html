@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lexy Goad — BSEE Degree Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #161921;
+      --border: #2a2f3d;
+      --accent: #00e5c0;
+      --accent2: #ff6b35;
+      --done: #0f2420;
+      --done-border: #00e5c0;
+      --done-text: #00e5c0;
+      --todo: #1e1a2e;
+      --todo-border: #ff6b35;
+      --todo-text: #ff9f72;
+      --muted: #4a5268;
+      --text: #c8d0e7;
+      --white: #eef1f8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      font-family: 'Syne', sans-serif;
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,192,0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,192,0.025) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    header {
+      position: relative;
+      z-index: 10;
+      padding: 2.5rem 3rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .header-title {
+      font-size: 0.68rem;
+      font-family: 'Space Mono', monospace;
+      color: var(--accent);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.6rem);
+      font-weight: 800;
+      color: var(--white);
+      line-height: 1;
+    }
+
+    header h1 span { color: var(--accent); }
+
+    .stats {
+      display: flex;
+      gap: 2rem;
+      font-family: 'Space Mono', monospace;
+    }
+
+    .stat { text-align: right; }
+    .stat-num { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .stat-num.done { color: var(--accent); }
+    .stat-num.todo { color: var(--accent2); }
+    .stat-label {
+      font-size: 0.62rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-top: 0.2rem;
+    }
+
+    .progress-bar-wrap {
+      position: relative;
+      z-index: 10;
+      padding: 1.2rem 3rem 0;
+    }
+
+    .progress-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    }
+
+    .progress-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.62rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+      letter-spacing: 0.08em;
+    }
+
+    .legend {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 1rem 3rem 0;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 0.5rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+    .legend-dot.done { background: var(--done-border); }
+    .legend-dot.todo { background: var(--todo-border); }
+    .legend-hint { margin-left: auto; font-size: 0.6rem; opacity: 0.6; }
+
+    .filters {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      gap: 0.5rem;
+      padding: 1.2rem 3rem 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 0.35rem 1rem;
+      border-radius: 100px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,192,0.07); }
+
+    .board-wrap {
+      position: relative;
+      z-index: 5;
+      padding: 2rem 3rem 5rem;
+    }
+
+    .semester-section { margin-bottom: 2.5rem; }
+
+    .semester-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nodes-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .node {
+      position: relative;
+      padding: 0.75rem 1rem 0.75rem 1rem;
+      border-radius: 8px;
+      border: 1.5px solid;
+      cursor: pointer;
+      transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+      user-select: none;
+      min-width: 130px;
+    }
+
+    .node:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+    }
+
+    .node.completed {
+      background: var(--done);
+      border-color: var(--done-border);
+    }
+
+    .node.remaining {
+      background: var(--todo);
+      border-color: var(--todo-border);
+    }
+
+    .node.hidden { display: none; }
+
+    .node-code {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding-right: 1.2rem;
+    }
+
+    .node.completed .node-code { color: var(--done-text); }
+    .node.remaining .node-code { color: var(--todo-text); }
+
+    .node-name {
+      font-size: 0.63rem;
+      color: var(--muted);
+      margin-top: 0.25rem;
+      line-height: 1.35;
+    }
+
+    .node-badges {
+      display: flex;
+      gap: 0.3rem;
+      margin-top: 0.4rem;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.52rem;
+      letter-spacing: 0.05em;
+      padding: 0.1rem 0.4rem;
+      border-radius: 3px;
+      text-transform: uppercase;
+    }
+
+    .badge.fall   { background: rgba(255,107,53,0.12); color: var(--accent2); border: 1px solid rgba(255,107,53,0.25); }
+    .badge.spring { background: rgba(0,229,192,0.08); color: var(--accent); border: 1px solid rgba(0,229,192,0.2); }
+    .badge.gateway{ background: rgba(255,200,50,0.1); color: #ffc832; border: 1px solid rgba(255,200,50,0.22); }
+    .badge.coreq  { background: rgba(180,120,255,0.08); color: #c890ff; border: 1px solid rgba(180,120,255,0.22); }
+
+    .check-icon {
+      position: absolute;
+      top: 0.55rem;
+      right: 0.65rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+    }
+
+    .node.completed .check-icon::after { content: '✓'; color: var(--accent); }
+    .node.remaining .check-icon::after { content: '○'; color: var(--muted); }
+
+    footer {
+      position: relative;
+      z-index: 10;
+      text-align: center;
+      padding: 1.2rem;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.58rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      letter-spacing: 0.1em;
+    }
+
+    @media (max-width: 620px) {
+      header, .board-wrap, .filters, .legend, .progress-bar-wrap { padding-left: 1.2rem; padding-right: 1.2rem; }
+      .stats { gap: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="header-title">BSEE — Fall 2024 Catalog · 2nd Degree · U00623087</div>
+    <h1>Lexy Goad <span>//</span> Degree Tracker</h1>
+  </div>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num done" id="done-count">0</div>
+      <div class="stat-label">Completed</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num todo" id="todo-count">0</div>
+      <div class="stat-label">Remaining</div>
+    </div>
+  </div>
+</header>
+
+<div class="progress-bar-wrap">
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+  </div>
+  <div class="progress-label" id="progress-label">0% complete</div>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-dot done"></span> Completed</div>
+  <div class="legend-item"><span class="legend-dot todo"></span> Remaining</div>
+  <div class="legend-hint">Click any node to toggle · Progress saves automatically</div>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" data-filter="all">All</button>
+  <button class="filter-btn" data-filter="completed">Completed</button>
+  <button class="filter-btn" data-filter="remaining">Remaining</button>
+  <button class="filter-btn" data-filter="fall">Fall Only</button>
+  <button class="filter-btn" data-filter="spring">Spring Only</button>
+  <button class="filter-btn" data-filter="gateway">Gateway Classes</button>
+</div>
+
+<div class="board-wrap" id="board">
+
+  <!-- GENERAL EDUCATION -->
+  <div class="semester-section">
+    <div class="semester-label">General Education &amp; Electives</div>
+    <div class="nodes-grid">
+
+      <div class="node completed" data-tags="completed" data-code="HUM1">
+        <div class="node-code">HUM 1</div>
+        <div class="node-name">Humanities Elective 1</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="BCM2">
+        <div class="node-code">BCM 2</div>
+        <div class="node-name">Business/Comm Elective 2</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="BCM1">
+        <div class="node-code">BCM 1</div>
+        <div class="node-name">Business/Comm Elective 1<br><small style="opacity:.55">(noted: BION 1720)</small></div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="SOC1">
+        <div class="node-code">SOC 1</div>
+        <div class="node-name">Social Science Elective 1</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="SOC2">
+        <div class="node-code">SOC 2</div>
+        <div class="node-name">Social Science Elective 2</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="TECH1">
+        <div class="node-code">Tech 1</div>
+        <div class="node-name">Tech Elective 1<br><small style="opacity:.55">(noted: BIOL 4730)</small></div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE-E1">
+        <div class="node-code">EECE Elec 1</div>
+        <div class="node-name">EECE Technical Elective 1</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE-E2">
+        <div class="node-code">EECE Elec 2</div>
+        <div class="node-name">EECE Technical Elective 2</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EE1">
+        <div class="node-code">EE 1</div>
+        <div class="node-name">EE Elective 1</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="NATSCI">
+        <div class="node-code">Nat Sci Lab</div>
+        <div class="node-name">Natural Science Lab (CHEM)</div>
+        <div class="check-icon"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FRESHMAN -->
+  <div class="semester-section">
+    <div class="semester-label">Freshman Year</div>
+    <div class="nodes-grid">
+
+      <div class="node completed" data-tags="completed" data-code="MATH1910">
+        <div class="node-code">MATH 1910</div>
+        <div class="node-name">Calculus I</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="PHYS2110">
+        <div class="node-code">PHYS 2110/2111</div>
+        <div class="node-name">Physics I &amp; Lab</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="COMP1900">
+        <div class="node-code">COMP 1900</div>
+        <div class="node-name">Intro to Computing</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="MATH1920">
+        <div class="node-code">MATH 1920</div>
+        <div class="node-name">Calculus II</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="ENGL1010">
+        <div class="node-code">ENGL 1010</div>
+        <div class="node-name">English Composition I</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="ENGL1020">
+        <div class="node-code">ENGL 1020</div>
+        <div class="node-name">English Composition II</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="ENGR1010">
+        <div class="node-code">ENGR 1010</div>
+        <div class="node-name">Intro to Engineering</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node completed" data-tags="completed" data-code="EECE1208">
+        <div class="node-code">EECE 1208</div>
+        <div class="node-name">Intro to EECE</div>
+        <div class="check-icon"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SOPHOMORE -->
+  <div class="semester-section">
+    <div class="semester-label">Sophomore Year</div>
+    <div class="nodes-grid">
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE2222">
+        <div class="node-code">EECE 2222</div>
+        <div class="node-name">Fund. of Digital Systems</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="MATH2110">
+        <div class="node-code">MATH 2110</div>
+        <div class="node-name">Calculus III</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="PHYS2120">
+        <div class="node-code">PHYS 2120/2121</div>
+        <div class="node-name">Physics II &amp; Lab</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining gateway" data-code="EECE2207">
+        <div class="node-code">EECE 2207</div>
+        <div class="node-name">Circuit Analysis I</div>
+        <div class="node-badges">
+          <span class="badge gateway">Gateway</span>
+        </div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE2201">
+        <div class="node-code">EECE 2201</div>
+        <div class="node-name">Intro to Logic Design</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE2203">
+        <div class="node-code">EECE 2203</div>
+        <div class="node-name">Logic Design Lab</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="ENGL2201">
+        <div class="node-code">ENGL 2201/2202</div>
+        <div class="node-name">Technical Writing</div>
+        <div class="check-icon"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- JUNIOR -->
+  <div class="semester-section">
+    <div class="semester-label">Junior Year</div>
+    <div class="nodes-grid">
+
+      <div class="node remaining" data-tags="remaining" data-code="MATH3242">
+        <div class="node-code">MATH 3242</div>
+        <div class="node-name">Differential Equations</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="MATH3120">
+        <div class="node-code">MATH 3120</div>
+        <div class="node-name">Linear Algebra</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE3270">
+        <div class="node-code">EECE 3270</div>
+        <div class="node-name">Electrical Machines</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining gateway" data-code="EECE3203">
+        <div class="node-code">EECE 3203*</div>
+        <div class="node-name">Signals &amp; Systems</div>
+        <div class="node-badges">
+          <span class="badge gateway">Gateway</span>
+          <span class="badge coreq">Co-req</span>
+        </div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining gateway" data-code="EECE3201">
+        <div class="node-code">EECE 3201*</div>
+        <div class="node-name">Electronics I</div>
+        <div class="node-badges">
+          <span class="badge gateway">Gateway</span>
+          <span class="badge coreq">Co-req</span>
+        </div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE3207">
+        <div class="node-code">EECE 3207</div>
+        <div class="node-name">Circuit Analysis II</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE3213">
+        <div class="node-code">EECE 3213</div>
+        <div class="node-name">Electronics Lab</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining spring" data-code="EECE3240">
+        <div class="node-code">EECE 3240</div>
+        <div class="node-name">Electromagnetics I</div>
+        <div class="node-badges">
+          <span class="badge spring">Spring</span>
+        </div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining gateway" data-code="EECE3211">
+        <div class="node-code">EECE 3211*</div>
+        <div class="node-name">Microprocessors</div>
+        <div class="node-badges">
+          <span class="badge gateway">Gateway</span>
+          <span class="badge coreq">Co-req</span>
+        </div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="ENGL3603">
+        <div class="node-code">ENGL 3603</div>
+        <div class="node-name">Advanced Technical Writing</div>
+        <div class="check-icon"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- SENIOR -->
+  <div class="semester-section">
+    <div class="semester-label">Senior Year</div>
+    <div class="nodes-grid">
+
+      <div class="node remaining" data-tags="remaining fall" data-code="EECE4251">
+        <div class="node-code">EECE 4251</div>
+        <div class="node-name">Control Systems</div>
+        <div class="node-badges"><span class="badge fall">Fall</span></div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE4235">
+        <div class="node-code">EECE 4235</div>
+        <div class="node-name">Communications Systems</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining fall" data-code="EECE4279">
+        <div class="node-code">EECE 4279</div>
+        <div class="node-name">Senior Design I</div>
+        <div class="node-badges"><span class="badge fall">Fall</span></div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining spring" data-code="EECE4180">
+        <div class="node-code">EECE 4180</div>
+        <div class="node-name">Senior Design II</div>
+        <div class="node-badges"><span class="badge spring">Spring</span></div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining" data-code="EECE4991">
+        <div class="node-code">EECE 4991</div>
+        <div class="node-name">Senior Seminar</div>
+        <div class="check-icon"></div>
+      </div>
+
+      <div class="node remaining" data-tags="remaining fall" data-code="EECE4201">
+        <div class="node-code">EECE 4201</div>
+        <div class="node-name">Power Electronics</div>
+        <div class="node-badges"><span class="badge fall">Fall</span></div>
+        <div class="check-icon"></div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  U00623087 &nbsp;·&nbsp; BSEE Fall 2024 Catalog &nbsp;·&nbsp; 2nd Degree &nbsp;·&nbsp; Click nodes to toggle · Progress auto-saves
+</footer>
+
+<script>
+  const STORAGE_KEY = 'lexy-bsee-v1';
+
+  function loadOverrides() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+    catch { return {}; }
+  }
+
+  function saveOverrides(o) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
+  }
+
+  let overrides = loadOverrides();
+
+  function setStatus(node, status) {
+    node.classList.toggle('completed', status === 'completed');
+    node.classList.toggle('remaining', status === 'remaining');
+    const base = node.dataset.tags.replace(/\bcompleted\b|\bremaining\b/g, '').trim();
+    node.dataset.tags = (status + ' ' + base).trim();
+  }
+
+  // Apply saved overrides
+  document.querySelectorAll('.node').forEach(node => {
+    const code = node.dataset.code;
+    if (overrides[code]) setStatus(node, overrides[code]);
+  });
+
+  // Toggle on click
+  document.querySelectorAll('.node').forEach(node => {
+    node.addEventListener('click', () => {
+      const code = node.dataset.code;
+      const newStatus = node.classList.contains('completed') ? 'remaining' : 'completed';
+      setStatus(node, newStatus);
+      overrides[code] = newStatus;
+      saveOverrides(overrides);
+      updateStats();
+      applyFilter(currentFilter);
+    });
+  });
+
+  function updateStats() {
+    const all = document.querySelectorAll('.node');
+    const done = document.querySelectorAll('.node.completed').length;
+    const total = all.length;
+    const pct = Math.round((done / total) * 100);
+    document.getElementById('done-count').textContent = done;
+    document.getElementById('todo-count').textContent = total - done;
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = pct + '% complete (' + done + '/' + total + ' courses)';
+  }
+
+  updateStats();
+
+  let currentFilter = 'all';
+
+  function applyFilter(filter) {
+    currentFilter = filter;
+    document.querySelectorAll('.node').forEach(node => {
+      const tags = node.dataset.tags || '';
+      let show = false;
+      if (filter === 'all') show = true;
+      else if (filter === 'completed') show = node.classList.contains('completed');
+      else if (filter === 'remaining') show = node.classList.contains('remaining');
+      else if (filter === 'fall') show = tags.includes('fall');
+      else if (filter === 'spring') show = tags.includes('spring');
+      else if (filter === 'gateway') show = tags.includes('gateway');
+      node.classList.toggle('hidden', !show);
+    });
+  }
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyFilter(btn.dataset.filter);
+    });
+  });
+
+  // Staggered entrance
+  document.querySelectorAll('.node').forEach((node, i) => {
+    node.style.opacity = '0';
+    node.style.transform = 'translateY(10px)';
+    node.style.transition = `opacity 0.35s ease ${i * 0.022}s, transform 0.35s ease ${i * 0.022}s, box-shadow 0.15s, filter 0.15s`;
+    requestAnimationFrame(() => setTimeout(() => {
+      node.style.opacity = '';
+      node.style.transform = '';
+    }, 30 + i * 22));
+  });
+</script>
+</body>
+</html>
