@@ -148,6 +148,81 @@
       flex-shrink: 0;
     }
 
+    /* Projects dropdown */
+    .btn-wrapper {
+      position: relative;
+    }
+
+    #projects-btn {
+      cursor: none;
+      background: var(--glass);
+      border: 1px solid rgba(126, 184, 247, 0.25);
+    }
+
+    #projects-dropdown {
+      position: absolute;
+      bottom: calc(100% + 10px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(8, 16, 32, 0.92);
+      border: 1px solid rgba(126, 184, 247, 0.3);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 6px;
+      overflow: hidden;
+      min-width: 220px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 24px rgba(74,158,255,0.08);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(8px);
+      transition: opacity 0.1s ease, transform 0.1s ease;
+    }
+
+    #projects-dropdown.open {
+      opacity: 1;
+      pointer-events: all;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .project-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      text-decoration: none;
+      color: var(--accent);
+      border-bottom: 1px solid rgba(126, 184, 247, 0.1);
+      transition: background 0.15s;
+      cursor: none;
+    }
+
+    .project-item:last-child { border-bottom: none; }
+
+    .project-item:hover {
+      background: rgba(74, 158, 255, 0.1);
+      color: #fff;
+    }
+
+    .project-item span {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .project-item strong {
+      font-family: 'Syne Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .project-item em {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 12px;
+      color: rgba(168, 216, 255, 0.5);
+    }
+
     /* Scroll hint */
     .hint {
       position: fixed;
@@ -182,22 +257,43 @@
       </svg>
       Resume
     </a>
-    <a href="vhdl-logisim.html" class="btn primary">
-      <svg class="btn-icon" viewBox="0 0 16 16" fill="none">
-        <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
-        <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
-        <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
-        <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.2"/>
-        <line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" stroke-width="1.2"/>
-      </svg>
-      VHDL → Logisim
-    </a>
-    <a href="#" class="btn">
-      <svg class="btn-icon" viewBox="0 0 16 16" fill="none">
-        <polyline points="1,11 5,7 8,10 12,4 15,7" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-      </svg>
-      Projects
-    </a>
+    <div class="btn-wrapper" id="projects-wrapper">
+      <button class="btn" id="projects-btn" onclick="toggleProjects(event)">
+        <svg class="btn-icon" viewBox="0 0 16 16" fill="none">
+          <polyline points="1,11 5,7 8,10 12,4 15,7" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+        </svg>
+        Projects
+        <svg id="projects-chevron" viewBox="0 0 16 16" fill="none" style="width:10px;height:10px;margin-left:2px;transition:transform 0.25s;flex-shrink:0;">
+          <polyline points="3,5 8,11 13,5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div id="projects-dropdown">
+        <a href="vhdl-logisim.html" class="project-item">
+          <svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;flex-shrink:0;">
+            <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/>
+            <line x1="9" y1="12" x2="15" y2="12" stroke="currentColor" stroke-width="1.2"/>
+            <line x1="12" y1="9" x2="12" y2="15" stroke="currentColor" stroke-width="1.2"/>
+          </svg>
+          <span>
+            <strong>VHDL → Logisim</strong>
+            <em>AI-powered VHDL synthesis tool</em>
+          </span>
+        </a>
+        <a href="degree-tracker.html" class="project-item">
+          <svg viewBox="0 0 16 16" fill="none" style="width:14px;height:14px;flex-shrink:0;">
+            <path d="M1 9L8 5l7 4-7 4-7-4z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+            <path d="M13 9v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            <path d="M4 11v2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <span>
+            <strong>Degree Tracker</strong>
+            <em>Interactive course planner</em>
+          </span>
+        </a>
+      </div>
+    </div>
     <a href="#" class="btn">
       <svg class="btn-icon" viewBox="0 0 16 16" fill="none">
         <circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/>
@@ -458,6 +554,24 @@ function draw() {
   requestAnimationFrame(draw);
 }
 
+// ─── PROJECTS DROPDOWN ────────────────────────────────────────────────────────
+let projectsOpen = false;
+
+function toggleProjects(e) {
+  e.stopPropagation();
+  projectsOpen = !projectsOpen;
+  document.getElementById('projects-dropdown').classList.toggle('open', projectsOpen);
+  document.getElementById('projects-chevron').style.transform = projectsOpen ? 'rotate(180deg)' : '';
+}
+
+document.addEventListener('click', () => {
+  if (projectsOpen) {
+    projectsOpen = false;
+    document.getElementById('projects-dropdown').classList.remove('open');
+    document.getElementById('projects-chevron').style.transform = '';
+  }
+});
+
 // ─── EVENTS ───────────────────────────────────────────────────────────────────
 window.addEventListener('mousemove', e => {
   mouseX = e.clientX;
@@ -466,7 +580,7 @@ window.addEventListener('mousemove', e => {
   cursor.style.top  = mouseY + 'px';
 });
 
-document.querySelectorAll('.btn').forEach(btn => {
+document.querySelectorAll('.btn, .project-item, #projects-btn').forEach(btn => {
   btn.addEventListener('mouseenter', () => cursor.classList.add('big'));
   btn.addEventListener('mouseleave', () => cursor.classList.remove('big'));
 });
