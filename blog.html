@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog · Lexy Goad</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --fg: #e8e8e2;
+      --muted: #666660;
+      --accent: #c8f060;
+      --card-bg: #111110;
+      --border: #222220;
+      --tag-bg: #1a1a18;
+      --tag-fg: #999990;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 100;
+      background: rgba(10, 10, 10, 0.85);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-brand {
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.active {
+      color: var(--fg);
+    }
+
+    /* ── MAIN ── */
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 7rem 2rem 6rem;
+    }
+
+    /* ── HEADER ── */
+    .blog-header {
+      margin-bottom: 3.5rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .blog-header .label {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+
+    .blog-header h1 {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--fg);
+    }
+
+    .blog-header p {
+      margin-top: 0.75rem;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── FILTER TAGS ── */
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .filter-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.3rem 0.75rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--fg);
+      color: var(--fg);
+    }
+
+    .filter-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── POST LIST ── */
+    .post-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .post-item {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 1.5rem;
+      padding: 1.75rem 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .post-item:first-child {
+      border-top: 1px solid var(--border);
+    }
+
+    .post-item:hover .post-title {
+      color: var(--accent);
+    }
+
+    .post-meta-left {
+      padding-top: 2px;
+    }
+
+    .post-date {
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .post-number {
+      font-size: 11px;
+      color: var(--border);
+      margin-top: 0.25rem;
+    }
+
+    .post-body {
+      min-width: 0;
+    }
+
+    .post-title {
+      font-size: 15px;
+      font-weight: 400;
+      color: var(--fg);
+      line-height: 1.4;
+      margin-bottom: 0.4rem;
+      transition: color 0.15s;
+    }
+
+    .post-excerpt {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: 0.75rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .post-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    .tag {
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      background: var(--tag-bg);
+      color: var(--tag-fg);
+      padding: 0.15rem 0.5rem;
+      border: 1px solid var(--border);
+    }
+
+    /* ── EMPTY STATE ── */
+    .empty {
+      padding: 3rem 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 0 2rem 3rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      padding-top: 2rem;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    footer a {
+      color: var(--muted);
+      transition: color 0.2s;
+    }
+
+    footer a:hover {
+      color: var(--fg);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 500px) {
+      .post-item {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+      }
+      .post-meta-left {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a href="/" class="nav-brand">deaddog.dev</a>
+    <ul class="nav-links">
+      <li><a href="/">home</a></li>
+      <li><a href="/blog.html" class="active">blog</a></li>
+      <li><a href="/resume.html">resume</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <div class="blog-header">
+      <div class="label">// writing</div>
+      <h1>things I've figured out<br>and written down</h1>
+      <p>notes on engineering, tools, and whatever I'm building</p>
+    </div>
+
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-tag="all">all</button>
+      <button class="filter-btn" data-tag="hardware">hardware</button>
+      <button class="filter-btn" data-tag="ai">ai</button>
+      <button class="filter-btn" data-tag="web">web</button>
+      <button class="filter-btn" data-tag="tools">tools</button>
+    </div>
+
+    <div class="post-list" id="post-list"></div>
+  </main>
+
+  <footer>
+    <span>lexy goad</span>
+    <a href="/">← back home</a>
+  </footer>
+
+  <script>
+    const posts = [
+      {
+        date: "Apr 2025",
+        title: "VHDL to Logisim: lessons from building an AI synthesis tool",
+        excerpt: "I built a tool that converts VHDL hardware descriptions into Logisim circuits using Claude. Here's what I learned about AI-assisted hardware synthesis and where it breaks down.",
+        tags: ["ai", "hardware"],
+        slug: "#"
+      },
+      {
+        date: "Mar 2025",
+        title: "Writing a degree tracker that actually helps me graduate",
+        excerpt: "My university's built-in planner is terrible. So I built my own — an interactive course planner that maps prerequisites, credits, and schedule conflicts in real time.",
+        tags: ["web", "tools"],
+        slug: "#"
+      },
+      {
+        date: "Feb 2025",
+        title: "GitHub Pages is a surprisingly good static host for side projects",
+        excerpt: "Before paying for hosting, try this: a repo, a CNAME record, and a custom domain. I run deaddog.dev for free this way and the deploy pipeline is just a git push.",
+        tags: ["web", "tools"],
+        slug: "#"
+      },
+      {
+        date: "Jan 2025",
+        title: "How I set up my VHDL dev environment from scratch",
+        excerpt: "Setting up GHDL, Logisim, and a workflow that doesn't make you want to close the laptop. A quick-start guide for anyone doing digital design without a lab.",
+        tags: ["hardware", "tools"],
+        slug: "#"
+      }
+    ];
+
+    let activeTag = "all";
+
+    const postList = document.getElementById("post-list");
+
+    function render() {
+      const filtered = activeTag === "all"
+        ? posts
+        : posts.filter(p => p.tags.includes(activeTag));
+
+      postList.innerHTML = "";
+
+      if (filtered.length === 0) {
+        postList.innerHTML = `<div class="empty">no posts tagged "${activeTag}" yet.</div>`;
+        return;
+      }
+
+      filtered.forEach((post, i) => {
+        const el = document.createElement("div");
+        el.className = "post-item";
+        el.setAttribute("role", "link");
+        el.setAttribute("tabindex", "0");
+        el.innerHTML = `
+          <div class="post-meta-left">
+            <div class="post-date">${post.date}</div>
+            <div class="post-number">#${String(posts.indexOf(post) + 1).padStart(2, "0")}</div>
+          </div>
+          <div class="post-body">
+            <div class="post-title">${post.title}</div>
+            <div class="post-excerpt">${post.excerpt}</div>
+            <div class="post-tags">${post.tags.map(t => `<span class="tag">${t}</span>`).join("")}</div>
+          </div>
+        `;
+        el.addEventListener("click", () => { if (post.slug !== "#") location.href = post.slug; });
+        el.addEventListener("keydown", e => { if (e.key === "Enter" && post.slug !== "#") location.href = post.slug; });
+        postList.appendChild(el);
+      });
+    }
+
+    document.getElementById("filters").addEventListener("click", e => {
+      const btn = e.target.closest(".filter-btn");
+      if (!btn) return;
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeTag = btn.dataset.tag;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
