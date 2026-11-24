@@ -1,753 +1,464 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lexy Goad — CpE/EE Dual Degree Tracker</title>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="shttps://github.com/PuppyLexy/PuppyLexy.github.io/edit/main/degree-tracker.htmltylesheet" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <title>Degree tracker | Lexy Goad</title>
+  <meta name="description" content="Course planner for the CpE/EE dual degree: mark courses done and filter by semester or gateway status.">
+  <meta name="theme-color" content="#e2e6e4">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="assets/site.css">
   <style>
-    :root {
-      --bg: #0d0f14;
-      --surface: #161921;
-      --border: #2a2f3d;
-      --accent: #00e5c0;
-      --accent2: #ff6b35;
-      --done: #0f2420;
-      --done-border: #00e5c0;
-      --done-text: #00e5c0;
-      --todo: #1e1a2e;
-      --todo-border: #ff6b35;
-      --todo-text: #ff9f72;
-      --muted: #4a5268;
-      --text: #c8d0e7;
-      --white: #eef1f8;
+    .page {
+      max-width: 64rem;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: var(--bg);
-      font-family: 'Syne', sans-serif;
-      color: var(--text);
-      min-height: 100vh;
+    h1 {
+      font-size: clamp(1.9rem, 5vw, 2.6rem);
+      font-weight: 500;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
     }
 
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(0,229,192,0.025) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,229,192,0.025) 1px, transparent 1px);
-      background-size: 40px 40px;
-      pointer-events: none;
-      z-index: 0;
-    }
-
-    header {
-      position: relative;
-      z-index: 10;
-      padding: 2.5rem 3rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 1rem;
-    }
-
-    .header-title {
-      font-size: 0.68rem;
-      font-family: 'Space Mono', monospace;
-      color: var(--accent);
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      margin-bottom: 0.4rem;
-    }
-
-    header h1 {
-      font-size: clamp(1.6rem, 4vw, 2.6rem);
-      font-weight: 800;
-      color: var(--white);
-      line-height: 1;
-    }
-
-    header h1 span { color: var(--accent); }
-
-    .stats {
-      display: flex;
-      gap: 2rem;
-      font-family: 'Space Mono', monospace;
-    }
-
-    .stat { text-align: right; }
-    .stat-num { font-size: 2rem; font-weight: 700; line-height: 1; }
-    .stat-num.done { color: var(--accent); }
-    .stat-num.todo { color: var(--accent2); }
-    .stat-label {
-      font-size: 0.62rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-top: 0.2rem;
-    }
-
-    .progress-bar-wrap {
-      position: relative;
-      z-index: 10;
-      padding: 1.2rem 3rem 0;
-    }
-
-    .progress-bar {
-      height: 3px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--accent2));
-      border-radius: 2px;
-      transition: width 0.6s ease;
-    }
-
-    .progress-label {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.62rem;
-      color: var(--muted);
+    .sub {
       margin-top: 0.5rem;
-      letter-spacing: 0.08em;
+      color: var(--ink-soft);
+    }
+
+    .progress {
+      margin-top: 2rem;
+      max-width: 32rem;
+      font-family: var(--sans);
+      font-size: 0.9375rem;
+    }
+
+    .progress progress {
+      display: block;
+      width: 100%;
+      height: 6px;
+      margin-top: 0.5rem;
+      border: 0;
+      border-radius: 0;
+      background: var(--rule);
+      color: var(--ink);
+      accent-color: var(--ink);
+    }
+
+    .progress progress::-webkit-progress-bar {
+      background: var(--rule);
+    }
+
+    .progress progress::-webkit-progress-value {
+      background: var(--ink);
+    }
+
+    .progress progress::-moz-progress-bar {
+      background: var(--ink);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.5rem 1.25rem;
+      margin-top: 2rem;
+      font-family: var(--sans);
+      font-size: 0.9375rem;
+    }
+
+    .controls button {
+      padding: 0.25rem 0;
+      border: 0;
+      border-bottom: 1px solid transparent;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .controls button:hover {
+      color: var(--ink);
+    }
+
+    .controls button[aria-pressed="true"] {
+      color: var(--ink);
+      border-bottom-color: var(--mark);
+    }
+
+    .hint {
+      margin-top: 0.75rem;
+      font-family: var(--sans);
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .term {
+      margin-top: 2.5rem;
+    }
+
+    .term h2 {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--ink);
+      font-size: 1.2rem;
+      font-weight: 500;
+    }
+
+    .term h2 span {
+      font-family: var(--sans);
+      font-size: 0.875rem;
+      font-weight: 400;
+      color: var(--muted);
+    }
+
+    .term[hidden] {
+      display: none;
+    }
+
+    .courses {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .course {
+      display: block;
+      width: 100%;
+      min-height: 4.5rem;
+      padding: 0.7rem 0.85rem;
+      border: 1px solid var(--ink);
+      border-left: 5px solid var(--mark);
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .course[hidden] {
+      display: none;
+    }
+
+    .course:hover {
+      background: var(--ground-deep);
+    }
+
+    .course[aria-pressed="true"] {
+      border-left-color: var(--ink);
+      background: var(--ink);
+      color: var(--ground);
+    }
+
+    .course .code {
+      display: block;
+      font-family: var(--sans);
+      font-size: 0.9375rem;
+      font-weight: 600;
+    }
+
+    .course .name {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 0.9375rem;
+      line-height: 1.3;
+      opacity: 0.85;
+    }
+
+    .course .flags {
+      display: block;
+      margin-top: 0.35rem;
+      font-family: var(--sans);
+      font-size: 0.75rem;
+      opacity: 0.8;
+    }
+
+    .key {
+      display: inline-block;
+      width: 0.7rem;
+      height: 0.7rem;
+      margin-right: 0.35rem;
+      vertical-align: -0.05rem;
+      border: 1px solid var(--ink);
+    }
+
+    .key--todo {
+      border-left: 5px solid var(--mark);
+      width: 0.9rem;
+    }
+
+    .key--done {
+      background: var(--ink);
     }
 
     .legend {
-      position: relative;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-      padding: 1rem 3rem 0;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.68rem;
-      color: var(--muted);
-      flex-wrap: wrap;
-    }
-
-    .legend-item { display: flex; align-items: center; gap: 0.5rem; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
-    .legend-dot.done { background: var(--done-border); }
-    .legend-dot.todo { background: var(--todo-border); }
-    .legend-hint { margin-left: auto; font-size: 0.6rem; opacity: 0.6; }
-
-    .filters {
-      position: relative;
-      z-index: 10;
-      display: flex;
-      gap: 0.5rem;
-      padding: 1.2rem 3rem 0.5rem;
-      flex-wrap: wrap;
-    }
-
-    .filter-btn {
-      padding: 0.35rem 1rem;
-      border-radius: 100px;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.65rem;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
-      transition: all 0.18s;
-    }
-
-    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,192,0.07); }
-
-    .board-wrap {
-      position: relative;
-      z-index: 5;
-      padding: 2rem 3rem 5rem;
-    }
-
-    .semester-section { margin-bottom: 2.5rem; }
-
-    .semester-label {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 1rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .nodes-grid {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.75rem;
-    }
-
-    .node {
-      position: relative;
-      padding: 0.75rem 1rem 0.75rem 1rem;
-      border-radius: 8px;
-      border: 1.5px solid;
-      cursor: pointer;
-      transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
-      user-select: none;
-      min-width: 130px;
-    }
-
-    .node:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 24px rgba(0,0,0,0.4);
-    }
-
-    .node.completed {
-      background: var(--done);
-      border-color: var(--done-border);
-    }
-
-    .node.remaining {
-      background: var(--todo);
-      border-color: var(--todo-border);
-    }
-
-    .node.hidden { display: none; }
-
-    .node-code {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      padding-right: 1.2rem;
-    }
-
-    .node.completed .node-code { color: var(--done-text); }
-    .node.remaining .node-code { color: var(--todo-text); }
-
-    .node-name {
-      font-size: 0.63rem;
-      color: var(--muted);
-      margin-top: 0.25rem;
-      line-height: 1.35;
-    }
-
-    .node-badges {
-      display: flex;
-      gap: 0.3rem;
-      margin-top: 0.4rem;
-      flex-wrap: wrap;
-    }
-
-    .badge {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.52rem;
-      letter-spacing: 0.05em;
-      padding: 0.1rem 0.4rem;
-      border-radius: 3px;
-      text-transform: uppercase;
-    }
-
-    .badge.fall   { background: rgba(255,107,53,0.12); color: var(--accent2); border: 1px solid rgba(255,107,53,0.25); }
-    .badge.spring { background: rgba(0,229,192,0.08); color: var(--accent); border: 1px solid rgba(0,229,192,0.2); }
-    .badge.gateway{ background: rgba(255,200,50,0.1); color: #ffc832; border: 1px solid rgba(255,200,50,0.22); }
-    .badge.coreq  { background: rgba(180,120,255,0.08); color: #c890ff; border: 1px solid rgba(180,120,255,0.22); }
-
-    .check-icon {
-      position: absolute;
-      top: 0.55rem;
-      right: 0.65rem;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.75rem;
-    }
-
-    .node.completed .check-icon::after { content: '✓'; color: var(--accent); }
-    .node.remaining .check-icon::after { content: '○'; color: var(--muted); }
-
-    footer {
-      position: relative;
-      z-index: 10;
-      text-align: center;
-      padding: 1.2rem;
-      font-family: 'Space Mono', monospace;
-      font-size: 0.58rem;
-      color: var(--muted);
-      border-top: 1px solid var(--border);
-      letter-spacing: 0.1em;
-    }
-
-    @media (max-width: 620px) {
-      header, .board-wrap, .filters, .legend, .progress-bar-wrap { padding-left: 1.2rem; padding-right: 1.2rem; }
-      .stats { gap: 1.2rem; }
+      gap: 0.25rem 1.5rem;
+      margin-top: 1.5rem;
+      font-family: var(--sans);
+      font-size: 0.875rem;
+      color: var(--ink-soft);
     }
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#content">Skip to content</a>
 
-<header>
-  <div>
-    <div class="header-title">CpE / EE Dual Degree </div>
-    <h1>Lexy Goad <span>//</span> Degree Tracker</h1>
-  </div>
-  <div class="stats">
-    <div class="stat">
-      <div class="stat-num done" id="done-count">0</div>
-      <div class="stat-label">Completed</div>
+  <header class="site-header">
+    <a class="home" href="./">deaddog.dev</a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="./">Home</a>
+      <a href="blog.html">Blog</a>
+      <a href="resume.html">Resume</a>
+    </nav>
+  </header>
+
+  <main class="page" id="content">
+    <h1>Degree tracker</h1>
+    <p class="sub">CpE / EE dual degree, Fall 2025 catalog.</p>
+
+    <div class="progress">
+      <p id="progress-text" aria-live="polite">0 of 0 courses done</p>
+      <progress id="progress-bar" max="100" value="0" aria-labelledby="progress-text"></progress>
     </div>
-    <div class="stat">
-      <div class="stat-num todo" id="todo-count">0</div>
-      <div class="stat-label">Remaining</div>
+
+    <div class="controls" id="filters" role="group" aria-label="Filter courses">
+      <button type="button" data-filter="all" aria-pressed="true">All</button>
+      <button type="button" data-filter="completed" aria-pressed="false">Completed</button>
+      <button type="button" data-filter="remaining" aria-pressed="false">Remaining</button>
+      <button type="button" data-filter="fall" aria-pressed="false">Fall only</button>
+      <button type="button" data-filter="spring" aria-pressed="false">Spring only</button>
+      <button type="button" data-filter="gateway" aria-pressed="false">Gateway classes</button>
     </div>
-  </div>
-</header>
-
-<div class="progress-bar-wrap">
-  <div class="progress-bar">
-    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
-  </div>
-  <div class="progress-label" id="progress-label">0% complete</div>
-</div>
-
-<div class="legend">
-  <div class="legend-item"><span class="legend-dot done"></span> Completed</div>
-  <div class="legend-item"><span class="legend-dot todo"></span> Remaining</div>
-  <div class="legend-hint">Click any node to toggle · Progress saves automatically</div>
-</div>
-
-<div class="filters">
-  <button class="filter-btn active" data-filter="all">All</button>
-  <button class="filter-btn" data-filter="completed">Completed</button>
-  <button class="filter-btn" data-filter="remaining">Remaining</button>
-  <button class="filter-btn" data-filter="fall">Fall Only</button>
-  <button class="filter-btn" data-filter="spring">Spring Only</button>
-  <button class="filter-btn" data-filter="gateway">Gateway Classes</button>
-</div>
-
-<div class="board-wrap" id="board">
-
-  <!-- ADDITIONAL REQUIRED CREDITS -->
-  <div class="semester-section">
-    <div class="semester-label">Additional Required Credits</div>
-    <div class="nodes-grid">
-
-      <div class="node completed" data-tags="completed" data-code="HUM1">
-        <div class="node-code">HUM 1</div>
-        <div class="node-name">Humanities Elective 1</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="HUM2">
-        <div class="node-code">HUM 2</div>
-        <div class="node-name">Humanities Elective 2</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="SOC1">
-        <div class="node-code">SOC 1</div>
-        <div class="node-name">Social Science Elective 1</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="SOC2">
-        <div class="node-code">SOC 2</div>
-        <div class="node-name">Social Science Elective 2</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="NATSCI">
-        <div class="node-code">Natural Science Lab</div>
-        <div class="node-name">Natural Science Lab</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="TECH1">
-        <div class="node-code">Tech 1</div>
-        <div class="node-name">Technology Elective 1</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="CPE1">
-        <div class="node-code">CpE 1</div>
-        <div class="node-name">CpE Elective 1</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="CPE2">
-        <div class="node-code">CpE 2</div>
-        <div class="node-name">CpE Elective 2</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EE1">
-        <div class="node-code">EE 1</div>
-        <div class="node-name">EE Elective 1</div>
-        <div class="check-icon"></div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- FRESHMAN -->
-  <div class="semester-section">
-    <div class="semester-label">Freshman Year</div>
-    <div class="nodes-grid">
-
-      <div class="node completed" data-tags="completed" data-code="MATH1910">
-        <div class="node-code">MATH 1910</div>
-        <div class="node-name">Calculus I</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="PHYS2110">
-        <div class="node-code">PHYS 2110/2111</div>
-        <div class="node-name">Physics I &amp; Lab</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="MATH1920">
-        <div class="node-code">MATH 1920</div>
-        <div class="node-name">Calculus II</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="COMP1900">
-        <div class="node-code">COMP 1900</div>
-        <div class="node-name">Intro to Computing</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="ENGL1010">
-        <div class="node-code">ENGL 1010</div>
-        <div class="node-name">English Composition I</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="ENGL1020">
-        <div class="node-code">ENGL 1020</div>
-        <div class="node-name">English Composition II</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="ENGR1010">
-        <div class="node-code">ENGR 1010</div>
-        <div class="node-name">Intro to Engineering</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE1208">
-        <div class="node-code">EECE 1208</div>
-        <div class="node-name">Intro to EECE</div>
-        <div class="check-icon"></div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- SOPHOMORE -->
-  <div class="semester-section">
-    <div class="semester-label">Sophomore Year</div>
-    <div class="nodes-grid">
-
-      <div class="node completed" data-tags="completed" data-code="PHYS2120">
-        <div class="node-code">PHYS 2120/2121</div>
-        <div class="node-name">Physics II &amp; Lab</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="COMP2700">
-        <div class="node-code">COMP 2700</div>
-        <div class="node-name">Discrete Structures</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="MATH2110">
-        <div class="node-code">MATH 2110</div>
-        <div class="node-name">Calculus III</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE2222">
-        <div class="node-code">EECE 2222</div>
-        <div class="node-name">Digital Circuit Design</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="MATH2120">
-        <div class="node-code">MATH 2120</div>
-        <div class="node-name">Linear Algebra</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="COMP2150">
-        <div class="node-code">COMP 2150</div>
-        <div class="node-name">Object-oriented Programming </div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed gateway" data-code="EECE2207">
-        <div class="node-code">EECE 2207</div>
-        <div class="node-name">Circuit Analysis I</div>
-        <div class="node-badges">
-          <span class="badge gateway">Gateway</span>
-        </div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="EECE2201">
-        <div class="node-code">EECE 2201</div>
-        <div class="node-name">Intro to Logic Design</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="EECE2203">
-        <div class="node-code">EECE 2203</div>
-        <div class="node-name">Logic Design Lab</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="ENGL2201">
-        <div class="node-code">ENGL 2201/2202</div>
-        <div class="node-name">Technical Writing</div>
-        <div class="check-icon"></div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- JUNIOR -->
-  <div class="semester-section">
-    <div class="semester-label">Junior Year</div>
-    <div class="nodes-grid">
-
-      <div class="node remaining" data-tags="completed" data-code="MATH3242">
-        <div class="node-code">MATH 3242</div>
-        <div class="node-name">Differential Equations</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining gateway" data-code="EECE3201">
-        <div class="node-code">EECE 3201*</div>
-        <div class="node-name">Electronics I</div>
-        <div class="node-badges">
-          <span class="badge gateway">Gateway</span>
-          <span class="badge coreq">Co-req</span>
-        </div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining gateway" data-code="EECE3203">
-        <div class="node-code">EECE 3203*</div>
-        <div class="node-name">Signals &amp; Systems</div>
-        <div class="node-badges">
-          <span class="badge gateway">Gateway</span>
-          <span class="badge coreq">Co-req</span>
-        </div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE3207">
-        <div class="node-code">EECE 3207</div>
-        <div class="node-name">Circuit Analysis II</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining gateway" data-code="EECE3211">
-        <div class="node-code">EECE 3211*</div>
-        <div class="node-name">Microprocessors</div>
-        <div class="node-badges">
-          <span class="badge gateway">Gateway</span>
-          <span class="badge coreq">Co-req</span>
-        </div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE3213">
-        <div class="node-code">EECE 3213</div>
-        <div class="node-name">Electronics Lab</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE3270">
-        <div class="node-code">EECE 3270</div>
-        <div class="node-name">Electrical Machines</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining spring" data-code="EECE3240">
-        <div class="node-code">EECE 3240 (S)</div>
-        <div class="node-name">Electromagnetics I</div>
-        <div class="node-badges">
-          <span class="badge spring">Spring</span>
-        </div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node completed" data-tags="completed" data-code="ENGL3603">
-        <div class="node-code">ENGL 3603</div>
-        <div class="node-name">Advanced Technical Writing</div>
-        <div class="check-icon"></div>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- SENIOR -->
-  <div class="semester-section">
-    <div class="semester-label">Senior Year</div>
-    <div class="nodes-grid">
-
-      <div class="node remaining" data-tags="remaining fall" data-code="EECE4278">
-        <div class="node-code">EECE 4278 (F)</div>
-        <div class="node-name">Computer Architecture</div>
-        <div class="node-badges"><span class="badge fall">Fall</span></div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining fall" data-code="EECE4081">
-        <div class="node-code">EECE 4081 (F)</div>
-        <div class="node-name">CpE Senior Elective</div>
-        <div class="node-badges"><span class="badge fall">Fall</span></div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining fall" data-code="EECE4279">
-        <div class="node-code">EECE 4279 (F)</div>
-        <div class="node-name">Senior Design I</div>
-        <div class="node-badges"><span class="badge fall">Fall</span></div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining fall" data-code="EECE4251">
-        <div class="node-code">EECE 4251 (F)</div>
-        <div class="node-name">Control Systems</div>
-        <div class="node-badges"><span class="badge fall">Fall</span></div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE4235">
-        <div class="node-code">EECE 4235</div>
-        <div class="node-name">Communications Systems</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining" data-code="EECE4991">
-        <div class="node-code">EECE 4991</div>
-        <div class="node-name">Senior Seminar</div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining fall" data-code="EECE4201">
-        <div class="node-code">EECE 4201 (F)</div>
-        <div class="node-name">Power Electronics</div>
-        <div class="node-badges"><span class="badge fall">Fall</span></div>
-        <div class="check-icon"></div>
-      </div>
-
-      <div class="node remaining" data-tags="remaining spring" data-code="EECE4280">
-        <div class="node-code">EECE 4280 (S)</div>
-        <div class="node-name">CpE Senior Design</div>
-        <div class="node-badges"><span class="badge spring">Spring</span></div>
-        <div class="check-icon"></div>
-      </div>
-
-    </div>
-  </div>
-
-</div>
-
-<footer>
-  U00623087 &nbsp;·&nbsp; CpE / EE Dual Degree Fall 2025 Catalog &nbsp;·&nbsp; Click nodes to toggle · Progress auto-saves
-</footer>
-
-<script>
-  const STORAGE_KEY = 'lexy-dualdegree-v1';
-
-  function loadOverrides() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
-    catch { return {}; }
-  }
-
-  function saveOverrides(o) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(o));
-  }
-
-  let overrides = loadOverrides();
-
-  function setStatus(node, status) {
-    node.classList.toggle('completed', status === 'completed');
-    node.classList.toggle('remaining', status === 'remaining');
-    const base = node.dataset.tags.replace(/\bcompleted\b|\bremaining\b/g, '').trim();
-    node.dataset.tags = (status + ' ' + base).trim();
-  }
-
-  document.querySelectorAll('.node').forEach(node => {
-    const code = node.dataset.code;
-    if (overrides[code]) setStatus(node, overrides[code]);
-  });
-
-  document.querySelectorAll('.node').forEach(node => {
-    node.addEventListener('click', () => {
-      const code = node.dataset.code;
-      const newStatus = node.classList.contains('completed') ? 'remaining' : 'completed';
-      setStatus(node, newStatus);
-      overrides[code] = newStatus;
-      saveOverrides(overrides);
-      updateStats();
-      applyFilter(currentFilter);
-    });
-  });
-
-  function updateStats() {
-    const all = document.querySelectorAll('.node');
-    const done = document.querySelectorAll('.node.completed').length;
-    const total = all.length;
-    const pct = Math.round((done / total) * 100);
-    document.getElementById('done-count').textContent = done;
-    document.getElementById('todo-count').textContent = total - done;
-    document.getElementById('progress-fill').style.width = pct + '%';
-    document.getElementById('progress-label').textContent = pct + '% complete (' + done + '/' + total + ' courses)';
-  }
-
-  updateStats();
-
-  let currentFilter = 'all';
-
-  function applyFilter(filter) {
-    currentFilter = filter;
-    document.querySelectorAll('.node').forEach(node => {
-      const tags = node.dataset.tags || '';
-      let show = false;
-      if (filter === 'all') show = true;
-      else if (filter === 'completed') show = node.classList.contains('completed');
-      else if (filter === 'remaining') show = node.classList.contains('remaining');
-      else if (filter === 'fall') show = tags.includes('fall');
-      else if (filter === 'spring') show = tags.includes('spring');
-      else if (filter === 'gateway') show = tags.includes('gateway');
-      node.classList.toggle('hidden', !show);
-    });
-  }
-
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      applyFilter(btn.dataset.filter);
-    });
-  });
-
-  document.querySelectorAll('.node').forEach((node, i) => {
-    node.style.opacity = '0';
-    node.style.transform = 'translateY(10px)';
-    node.style.transition = `opacity 0.35s ease ${i * 0.022}s, transform 0.35s ease ${i * 0.022}s, box-shadow 0.15s, filter 0.15s`;
-    requestAnimationFrame(() => setTimeout(() => {
-      node.style.opacity = '';
-      node.style.transform = '';
-    }, 30 + i * 22));
-  });
-</script>
+
+    <p class="legend">
+      <span><span class="key key--done"></span>Done</span>
+      <span><span class="key key--todo"></span>Still to take</span>
+      <span>* co-requisite</span>
+    </p>
+    <p class="hint">Select a course to mark it done. Your progress is saved in this browser.</p>
+
+    <div id="board"></div>
+  </main>
+
+  <footer class="site-footer">CpE / EE dual degree, Fall 2025 catalog.</footer>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const STORAGE_KEY = "lexy-dualdegree-v1";
+
+      // status: "done" or "todo". flags: any of fall, spring, gateway, coreq.
+      const TERMS = [
+        {
+          title: "Additional required credits",
+          courses: [
+            { id: "HUM1", code: "HUM 1", name: "Humanities Elective 1", status: "done" },
+            { id: "HUM2", code: "HUM 2", name: "Humanities Elective 2", status: "done" },
+            { id: "SOC1", code: "SOC 1", name: "Social Science Elective 1", status: "done" },
+            { id: "SOC2", code: "SOC 2", name: "Social Science Elective 2", status: "done" },
+            { id: "NATSCI", code: "Natural Science Lab", name: "Natural Science Lab", status: "done" },
+            { id: "TECH1", code: "Tech 1", name: "Technology Elective 1", status: "done" },
+            { id: "CPE1", code: "CpE 1", name: "CpE Elective 1", status: "todo" },
+            { id: "CPE2", code: "CpE 2", name: "CpE Elective 2", status: "todo" },
+            { id: "EE1", code: "EE 1", name: "EE Elective 1", status: "todo" },
+          ],
+        },
+        {
+          title: "Freshman year",
+          courses: [
+            { id: "MATH1910", code: "MATH 1910", name: "Calculus I", status: "done" },
+            { id: "PHYS2110", code: "PHYS 2110/2111", name: "Physics I & Lab", status: "done" },
+            { id: "MATH1920", code: "MATH 1920", name: "Calculus II", status: "done" },
+            { id: "COMP1900", code: "COMP 1900", name: "Intro to Computing", status: "done" },
+            { id: "ENGL1010", code: "ENGL 1010", name: "English Composition I", status: "done" },
+            { id: "ENGL1020", code: "ENGL 1020", name: "English Composition II", status: "done" },
+            { id: "ENGR1010", code: "ENGR 1010", name: "Intro to Engineering", status: "done" },
+            { id: "EECE1208", code: "EECE 1208", name: "Intro to EECE", status: "todo" },
+          ],
+        },
+        {
+          title: "Sophomore year",
+          courses: [
+            { id: "PHYS2120", code: "PHYS 2120/2121", name: "Physics II & Lab", status: "done" },
+            { id: "COMP2700", code: "COMP 2700", name: "Discrete Structures", status: "todo" },
+            { id: "MATH2110", code: "MATH 2110", name: "Calculus III", status: "todo" },
+            { id: "EECE2222", code: "EECE 2222", name: "Digital Circuit Design", status: "todo" },
+            { id: "MATH2120", code: "MATH 2120", name: "Linear Algebra", status: "done" },
+            { id: "COMP2150", code: "COMP 2150", name: "Object-oriented Programming", status: "todo" },
+            { id: "EECE2207", code: "EECE 2207", name: "Circuit Analysis I", status: "done", flags: ["gateway"] },
+            { id: "EECE2201", code: "EECE 2201", name: "Intro to Logic Design", status: "done" },
+            { id: "EECE2203", code: "EECE 2203", name: "Logic Design Lab", status: "done" },
+            { id: "ENGL2201", code: "ENGL 2201/2202", name: "Technical Writing", status: "done" },
+          ],
+        },
+        {
+          title: "Junior year",
+          courses: [
+            { id: "MATH3242", code: "MATH 3242", name: "Differential Equations", status: "todo" },
+            { id: "EECE3201", code: "EECE 3201*", name: "Electronics I", status: "todo", flags: ["gateway", "coreq"] },
+            { id: "EECE3203", code: "EECE 3203*", name: "Signals & Systems", status: "todo", flags: ["gateway", "coreq"] },
+            { id: "EECE3207", code: "EECE 3207", name: "Circuit Analysis II", status: "todo" },
+            { id: "EECE3211", code: "EECE 3211*", name: "Microprocessors", status: "todo", flags: ["gateway", "coreq"] },
+            { id: "EECE3213", code: "EECE 3213", name: "Electronics Lab", status: "todo" },
+            { id: "EECE3270", code: "EECE 3270", name: "Electrical Machines", status: "todo" },
+            { id: "EECE3240", code: "EECE 3240", name: "Electromagnetics I", status: "todo", flags: ["spring"] },
+            { id: "ENGL3603", code: "ENGL 3603", name: "Advanced Technical Writing", status: "done" },
+          ],
+        },
+        {
+          title: "Senior year",
+          courses: [
+            { id: "EECE4278", code: "EECE 4278", name: "Computer Architecture", status: "todo", flags: ["fall"] },
+            { id: "EECE4081", code: "EECE 4081", name: "CpE Senior Elective", status: "todo", flags: ["fall"] },
+            { id: "EECE4279", code: "EECE 4279", name: "Senior Design I", status: "todo", flags: ["fall"] },
+            { id: "EECE4251", code: "EECE 4251", name: "Control Systems", status: "todo", flags: ["fall"] },
+            { id: "EECE4235", code: "EECE 4235", name: "Communications Systems", status: "todo" },
+            { id: "EECE4991", code: "EECE 4991", name: "Senior Seminar", status: "todo" },
+            { id: "EECE4201", code: "EECE 4201", name: "Power Electronics", status: "todo", flags: ["fall"] },
+            { id: "EECE4280", code: "EECE 4280", name: "CpE Senior Design", status: "todo", flags: ["spring"] },
+          ],
+        },
+      ];
+
+      const FLAG_LABELS = {
+        fall: "Fall",
+        spring: "Spring",
+        gateway: "Gateway",
+        coreq: "Co-req",
+      };
+
+      const board = document.getElementById("board");
+      const filterBar = document.getElementById("filters");
+      const progressText = document.getElementById("progress-text");
+      const progressBar = document.getElementById("progress-bar");
+
+      let saved = {};
+      try {
+        saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      } catch {
+        saved = {};
+      }
+
+      function persist() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+        } catch {
+          /* storage blocked or full: progress just won't stick */
+        }
+      }
+
+      const state = new Map();
+      const buttons = new Map();
+      const sections = [];
+      let filter = "all";
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+
+      function build() {
+        const frag = document.createDocumentFragment();
+
+        for (const term of TERMS) {
+          const section = el("section", "term");
+          const count = el("span");
+          const heading = el("h2");
+          heading.append(term.title, count);
+          const grid = el("div", "courses");
+
+          for (const course of term.courses) {
+            const status = saved[course.id] === "done" || saved[course.id] === "todo"
+              ? saved[course.id]
+              : course.status;
+            state.set(course.id, status);
+
+            const btn = el("button", "course");
+            btn.type = "button";
+            btn.dataset.id = course.id;
+            btn.append(el("span", "code", course.code), el("span", "name", course.name));
+            if (course.flags) {
+              btn.append(el("span", "flags", course.flags.map((f) => FLAG_LABELS[f]).join(", ")));
+            }
+            buttons.set(course.id, { btn, course });
+            grid.append(btn);
+          }
+
+          section.append(heading, grid);
+          sections.push({ section, count, term });
+          frag.append(section);
+        }
+
+        board.append(frag);
+      }
+
+      function matches(course, status) {
+        switch (filter) {
+          case "completed": return status === "done";
+          case "remaining": return status === "todo";
+          case "fall":
+          case "spring":
+          case "gateway": return (course.flags || []).includes(filter);
+          default: return true;
+        }
+      }
+
+      function update() {
+        let done = 0;
+        const total = buttons.size;
+
+        for (const [id, { btn, course }] of buttons) {
+          const status = state.get(id);
+          if (status === "done") done++;
+          btn.setAttribute("aria-pressed", String(status === "done"));
+          btn.hidden = !matches(course, status);
+        }
+
+        for (const { section, count, term } of sections) {
+          const doneHere = term.courses.filter((c) => state.get(c.id) === "done").length;
+          count.textContent = `${doneHere} of ${term.courses.length} done`;
+          section.hidden = term.courses.every((c) => buttons.get(c.id).btn.hidden);
+        }
+
+        const pct = Math.round((done / total) * 100);
+        progressText.textContent = `${done} of ${total} courses done (${pct}%)`;
+        progressBar.value = pct;
+      }
+
+      board.addEventListener("click", (e) => {
+        const btn = e.target.closest("button.course");
+        if (!btn) return;
+        const id = btn.dataset.id;
+        const next = state.get(id) === "done" ? "todo" : "done";
+        state.set(id, next);
+        saved[id] = next;
+        persist();
+        update();
+      });
+
+      filterBar.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-filter]");
+        if (!btn) return;
+        filter = btn.dataset.filter;
+        for (const b of filterBar.querySelectorAll("button")) {
+          b.setAttribute("aria-pressed", String(b === btn));
+        }
+        update();
+      });
+
+      build();
+      update();
+    })();
+  </script>
 </body>
 </html>

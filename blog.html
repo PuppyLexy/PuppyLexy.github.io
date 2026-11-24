@@ -1,389 +1,265 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Blog · Lexy Goad</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <title>Blog | Lexy Goad</title>
+  <meta name="description" content="Notes on engineering, tools and whatever Lexy Goad is building.">
+  <meta name="theme-color" content="#e2e6e4">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="assets/site.css">
   <style>
-    :root {
-      --bg: #0a0a0a;
-      --fg: #e8e8e2;
-      --muted: #666660;
-      --accent: #c8f060;
-      --card-bg: #111110;
-      --border: #222220;
-      --tag-bg: #1a1a18;
-      --tag-fg: #999990;
+    .intro h1 {
+      font-size: clamp(1.9rem, 5vw, 2.6rem);
+      font-weight: 500;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
+      text-wrap: balance;
     }
 
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html, body {
-      background: var(--bg);
-      color: var(--fg);
-      font-family: 'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
-      font-size: 14px;
-      line-height: 1.7;
-      min-height: 100vh;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    /* ── NAV ── */
-    nav {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      padding: 1.25rem 2rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      z-index: 100;
-      background: rgba(10, 10, 10, 0.85);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .nav-brand {
-      font-size: 13px;
-      color: var(--accent);
-      letter-spacing: 0.04em;
-    }
-
-    .nav-links {
-      display: flex;
-      gap: 2rem;
-      list-style: none;
-    }
-
-    .nav-links a {
-      font-size: 12px;
-      color: var(--muted);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      transition: color 0.2s;
-    }
-
-    .nav-links a:hover,
-    .nav-links a.active {
-      color: var(--fg);
-    }
-
-    /* ── MAIN ── */
-    main {
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 7rem 2rem 6rem;
-    }
-
-    /* ── HEADER ── */
-    .blog-header {
-      margin-bottom: 3.5rem;
-      padding-bottom: 2rem;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .blog-header .label {
-      font-size: 11px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--accent);
-      margin-bottom: 0.75rem;
-    }
-
-    .blog-header h1 {
-      font-size: clamp(1.6rem, 4vw, 2.4rem);
-      font-weight: 400;
-      letter-spacing: -0.02em;
-      line-height: 1.2;
-      color: var(--fg);
-    }
-
-    .blog-header p {
+    .intro p {
       margin-top: 0.75rem;
-      color: var(--muted);
-      font-size: 13px;
+      color: var(--ink-soft);
     }
 
-    /* ── FILTER TAGS ── */
     .filters {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 2.5rem;
+      gap: 0.25rem 1.25rem;
+      margin-top: 2.5rem;
+      font-family: var(--sans);
+      font-size: 0.9375rem;
     }
 
-    .filter-btn {
+    .filters button {
+      padding: 0.25rem 0;
+      border: 0;
+      border-bottom: 1px solid transparent;
       background: none;
-      border: 1px solid var(--border);
       color: var(--muted);
-      font-family: inherit;
-      font-size: 11px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      padding: 0.3rem 0.75rem;
+      font: inherit;
       cursor: pointer;
-      transition: all 0.15s;
     }
 
-    .filter-btn:hover {
-      border-color: var(--fg);
-      color: var(--fg);
+    .filters button:hover {
+      color: var(--ink);
     }
 
-    .filter-btn.active {
-      border-color: var(--accent);
-      color: var(--accent);
+    .filters button[aria-pressed="true"] {
+      color: var(--ink);
+      border-bottom-color: var(--mark);
     }
 
-    /* ── POST LIST ── */
-    .post-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
+    .posts {
+      margin-top: 1.5rem;
+      border-top: 1px solid var(--rule);
     }
 
-    .post-item {
+    .post {
       display: grid;
-      grid-template-columns: 80px 1fr;
-      gap: 1.5rem;
-      padding: 1.75rem 0;
-      border-bottom: 1px solid var(--border);
-      cursor: pointer;
-      transition: background 0.15s;
+      grid-template-columns: 5.5rem 1fr;
+      gap: 0 1.5rem;
+      padding: 1.5rem 0;
+      border-bottom: 1px solid var(--rule);
     }
 
-    .post-item:first-child {
-      border-top: 1px solid var(--border);
-    }
-
-    .post-item:hover .post-title {
-      color: var(--accent);
-    }
-
-    .post-meta-left {
-      padding-top: 2px;
-    }
-
-    .post-date {
-      font-size: 11px;
+    .post .when {
+      font-family: var(--sans);
+      font-size: 0.875rem;
       color: var(--muted);
-      letter-spacing: 0.04em;
-      white-space: nowrap;
+      padding-top: 0.3rem;
     }
 
-    .post-number {
-      font-size: 11px;
-      color: var(--border);
-      margin-top: 0.25rem;
+    .post h2 {
+      font-size: 1.25rem;
+      font-weight: 500;
+      line-height: 1.3;
     }
 
-    .post-body {
-      min-width: 0;
+    .post h2 a {
+      text-decoration: none;
     }
 
-    .post-title {
-      font-size: 15px;
-      font-weight: 400;
-      color: var(--fg);
-      line-height: 1.4;
-      margin-bottom: 0.4rem;
-      transition: color 0.15s;
+    .post h2 a:hover {
+      text-decoration: underline;
     }
 
-    .post-excerpt {
-      font-size: 12px;
+    .post p {
+      margin-top: 0.4rem;
+      font-size: 1rem;
+      color: var(--ink-soft);
+    }
+
+    .post .tags {
+      margin-top: 0.6rem;
+      font-family: var(--sans);
+      font-size: 0.8125rem;
       color: var(--muted);
-      line-height: 1.6;
-      margin-bottom: 0.75rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
     }
 
-    .post-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem;
+    .post .soon {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 0.8125rem;
+      font-style: italic;
     }
 
-    .tag {
-      font-size: 10px;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      background: var(--tag-bg);
-      color: var(--tag-fg);
-      padding: 0.15rem 0.5rem;
-      border: 1px solid var(--border);
-    }
-
-    /* ── EMPTY STATE ── */
     .empty {
-      padding: 3rem 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    /* ── FOOTER ── */
-    footer {
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 0 2rem 3rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-top: 1px solid var(--border);
-      padding-top: 2rem;
-      font-size: 11px;
+      padding: 2rem 0;
       color: var(--muted);
     }
 
-    footer a {
-      color: var(--muted);
-      transition: color 0.2s;
-    }
-
-    footer a:hover {
-      color: var(--fg);
-    }
-
-    /* ── RESPONSIVE ── */
-    @media (max-width: 500px) {
-      .post-item {
+    @media (max-width: 30rem) {
+      .post {
         grid-template-columns: 1fr;
-        gap: 0.5rem;
       }
-      .post-meta-left {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
+
+      .post .when {
+        padding-top: 0;
+        margin-bottom: 0.25rem;
       }
     }
   </style>
 </head>
 <body>
+  <a class="skip-link" href="#content">Skip to content</a>
 
-  <nav>
-    <a href="/" class="nav-brand">deaddog.dev</a>
-    <ul class="nav-links">
-      <li><a href="/">home</a></li>
-      <li><a href="/blog.html" class="active">blog</a></li>
-      <li><a href="/resume.html">resume</a></li>
-    </ul>
-  </nav>
+  <header class="site-header">
+    <a class="home" href="./">deaddog.dev</a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="./">Home</a>
+      <a href="blog.html" aria-current="page">Blog</a>
+      <a href="resume.html">Resume</a>
+    </nav>
+  </header>
 
-  <main>
-    <div class="blog-header">
-      <div class="label">// writing</div>
-      <h1>things I've figured out<br>and written down</h1>
-      <p>notes on engineering, tools, and whatever I'm building</p>
+  <main class="page" id="content">
+    <div class="intro">
+      <h1>Things I've figured out and written down</h1>
+      <p>Notes on engineering, tools, and whatever I'm building.</p>
     </div>
 
-    <div class="filters" id="filters">
-      <button class="filter-btn active" data-tag="all">all</button>
-      <button class="filter-btn" data-tag="hardware">hardware</button>
-      <button class="filter-btn" data-tag="ai">ai</button>
-      <button class="filter-btn" data-tag="web">web</button>
-      <button class="filter-btn" data-tag="tools">tools</button>
+    <div class="filters" id="filters" role="group" aria-label="Filter posts by topic">
+      <button type="button" data-tag="all" aria-pressed="true">All</button>
+      <button type="button" data-tag="hardware" aria-pressed="false">Hardware</button>
+      <button type="button" data-tag="ai" aria-pressed="false">AI</button>
+      <button type="button" data-tag="web" aria-pressed="false">Web</button>
+      <button type="button" data-tag="tools" aria-pressed="false">Tools</button>
     </div>
 
-    <div class="post-list" id="post-list"></div>
+    <div class="posts" id="posts" aria-live="polite"></div>
   </main>
 
-  <footer>
-    <span>lexy goad</span>
-    <a href="/">← back home</a>
-  </footer>
+  <footer class="site-footer">Lexy Goad</footer>
 
   <script>
-    const posts = [
-      {
-        date: "Apr 2025",
-        title: "VHDL to Logisim: lessons from building an AI synthesis tool",
-        excerpt: "I built a tool that converts VHDL hardware descriptions into Logisim circuits using Claude. Here's what I learned about AI-assisted hardware synthesis and where it breaks down.",
-        tags: ["ai", "hardware"],
-        slug: "#"
-      },
-      {
-        date: "Mar 2025",
-        title: "Writing a degree tracker that actually helps me graduate",
-        excerpt: "My university's built-in planner is terrible. So I built my own — an interactive course planner that maps prerequisites, credits, and schedule conflicts in real time.",
-        tags: ["web", "tools"],
-        slug: "#"
-      },
-      {
-        date: "Feb 2025",
-        title: "GitHub Pages is a surprisingly good static host for side projects",
-        excerpt: "Before paying for hosting, try this: a repo, a CNAME record, and a custom domain. I run deaddog.dev for free this way and the deploy pipeline is just a git push.",
-        tags: ["web", "tools"],
-        slug: "#"
-      },
-      {
-        date: "Jan 2025",
-        title: "How I set up my VHDL dev environment from scratch",
-        excerpt: "Setting up GHDL, Logisim, and a workflow that doesn't make you want to close the laptop. A quick-start guide for anyone doing digital design without a lab.",
-        tags: ["hardware", "tools"],
-        slug: "#"
+    (() => {
+      "use strict";
+
+      // Set `url` once a post is published. Posts without a url render as plain text.
+      const POSTS = [
+        {
+          date: "2025-04",
+          label: "Apr 2025",
+          title: "VHDL to Logisim: lessons from building an AI synthesis tool",
+          excerpt: "I built a tool that converts VHDL hardware descriptions into Logisim circuits using Claude. Here's what I learned about AI-assisted hardware synthesis and where it breaks down.",
+          tags: ["ai", "hardware"],
+          url: null,
+        },
+        {
+          date: "2025-03",
+          label: "Mar 2025",
+          title: "Writing a degree tracker that actually helps me graduate",
+          excerpt: "My university's built-in planner is terrible. So I built my own: an interactive course planner that maps prerequisites, credits, and schedule conflicts in real time.",
+          tags: ["web", "tools"],
+          url: null,
+        },
+        {
+          date: "2025-02",
+          label: "Feb 2025",
+          title: "GitHub Pages is a surprisingly good static host for side projects",
+          excerpt: "Before paying for hosting, try this: a repo, a CNAME record, and a custom domain. I run deaddog.dev for free this way and the deploy pipeline is just a git push.",
+          tags: ["web", "tools"],
+          url: null,
+        },
+        {
+          date: "2025-01",
+          label: "Jan 2025",
+          title: "How I set up my VHDL dev environment from scratch",
+          excerpt: "Setting up GHDL, Logisim, and a workflow that doesn't make you want to close the laptop. A quick-start guide for anyone doing digital design without a lab.",
+          tags: ["hardware", "tools"],
+          url: null,
+        },
+      ];
+
+      const list = document.getElementById("posts");
+      const filters = document.getElementById("filters");
+      let activeTag = "all";
+
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
       }
-    ];
 
-    let activeTag = "all";
+      function renderPost(post) {
+        const article = el("article", "post");
 
-    const postList = document.getElementById("post-list");
+        const when = el("div", "when");
+        const time = el("time", "", post.label);
+        time.dateTime = post.date;
+        when.append(time);
+        if (!post.url) when.append(el("span", "soon", "Coming soon"));
 
-    function render() {
-      const filtered = activeTag === "all"
-        ? posts
-        : posts.filter(p => p.tags.includes(activeTag));
+        const body = el("div");
+        const heading = el("h2");
+        if (post.url) {
+          const link = el("a", "", post.title);
+          link.href = post.url;
+          heading.append(link);
+        } else {
+          heading.append(post.title);
+        }
 
-      postList.innerHTML = "";
-
-      if (filtered.length === 0) {
-        postList.innerHTML = `<div class="empty">no posts tagged "${activeTag}" yet.</div>`;
-        return;
+        body.append(
+          heading,
+          el("p", "", post.excerpt),
+          el("p", "tags", post.tags.join(", "))
+        );
+        article.append(when, body);
+        return article;
       }
 
-      filtered.forEach((post, i) => {
-        const el = document.createElement("div");
-        el.className = "post-item";
-        el.setAttribute("role", "link");
-        el.setAttribute("tabindex", "0");
-        el.innerHTML = `
-          <div class="post-meta-left">
-            <div class="post-date">${post.date}</div>
-            <div class="post-number">#${String(posts.indexOf(post) + 1).padStart(2, "0")}</div>
-          </div>
-          <div class="post-body">
-            <div class="post-title">${post.title}</div>
-            <div class="post-excerpt">${post.excerpt}</div>
-            <div class="post-tags">${post.tags.map(t => `<span class="tag">${t}</span>`).join("")}</div>
-          </div>
-        `;
-        el.addEventListener("click", () => { if (post.slug !== "#") location.href = post.slug; });
-        el.addEventListener("keydown", e => { if (e.key === "Enter" && post.slug !== "#") location.href = post.slug; });
-        postList.appendChild(el);
+      function render() {
+        const shown = activeTag === "all"
+          ? POSTS
+          : POSTS.filter((p) => p.tags.includes(activeTag));
+
+        list.replaceChildren();
+
+        if (!shown.length) {
+          list.append(el("p", "empty", `Nothing tagged "${activeTag}" yet.`));
+          return;
+        }
+        list.append(...shown.map(renderPost));
+      }
+
+      filters.addEventListener("click", (e) => {
+        const button = e.target.closest("button[data-tag]");
+        if (!button) return;
+        activeTag = button.dataset.tag;
+        for (const b of filters.querySelectorAll("button")) {
+          b.setAttribute("aria-pressed", String(b === button));
+        }
+        render();
       });
-    }
 
-    document.getElementById("filters").addEventListener("click", e => {
-      const btn = e.target.closest(".filter-btn");
-      if (!btn) return;
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      activeTag = btn.dataset.tag;
       render();
-    });
-
-    render();
+    })();
   </script>
 </body>
 </html>

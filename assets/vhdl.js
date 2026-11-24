@@ -1,0 +1,2016 @@
+const EXAMPLES = {
+  half_adder: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity half_adder is
+  port (
+    a   : in  std_logic;
+    b   : in  std_logic;
+    sum : out std_logic;
+    cout: out std_logic
+  );
+end entity;
+
+architecture rtl of half_adder is
+begin
+  sum  <= a xor b;
+  cout <= a and b;
+end architecture;`,
+
+  full_adder: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity full_adder is
+  port (
+    a, b, cin : in  std_logic;
+    sum, cout : out std_logic
+  );
+end entity;
+
+architecture rtl of full_adder is
+  signal s1 : std_logic;
+  signal c1 : std_logic;
+  signal c2 : std_logic;
+begin
+  s1   <= a xor b;
+  sum  <= s1 xor cin;
+  c1   <= a and b;
+  c2   <= s1 and cin;
+  cout <= c1 or c2;
+end architecture;`,
+
+  mux4: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity mux4to1 is
+  port (
+    d0, d1, d2, d3 : in  std_logic;
+    sel0, sel1     : in  std_logic;
+    y              : out std_logic
+  );
+end entity;
+
+architecture rtl of mux4to1 is
+  signal ns0, ns1           : std_logic;
+  signal t0, t1, t2, t3     : std_logic;
+  signal or01, or23         : std_logic;
+begin
+  ns0 <= not sel0;
+  ns1 <= not sel1;
+  t0  <= d0 and ns1 and ns0;
+  t1  <= d1 and ns1 and sel0;
+  t2  <= d2 and sel1 and ns0;
+  t3  <= d3 and sel1 and sel0;
+  or01 <= t0 or t1;
+  or23 <= t2 or t3;
+  y   <= or01 or or23;
+end architecture;`,
+
+  decoder: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity decoder2to4 is
+  port (
+    a, b, en        : in  std_logic;
+    y0, y1, y2, y3  : out std_logic
+  );
+end entity;
+
+architecture rtl of decoder2to4 is
+  signal na, nb : std_logic;
+begin
+  na <= not a;
+  nb <= not b;
+  y0 <= en and na and nb;
+  y1 <= en and a  and nb;
+  y2 <= en and na and b;
+  y3 <= en and a  and b;
+end architecture;`,
+
+  dff: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity dff is
+  port (
+    d   : in  std_logic;
+    clk : in  std_logic;
+    rst : in  std_logic;
+    q   : out std_logic;
+    qn  : out std_logic
+  );
+end entity;
+
+architecture rtl of dff is
+begin
+  process(clk, rst)
+  begin
+    if rst = '1' then
+      q  <= '0';
+      qn <= '1';
+    elsif rising_edge(clk) then
+      q  <= d;
+      qn <= not d;
+    end if;
+  end process;
+end architecture;`,
+
+  comparator: `library ieee;
+use ieee.std_logic_1164.all;
+
+entity comparator1bit is
+  port (
+    a, b   : in  std_logic;
+    eq, gt, lt : out std_logic
+  );
+end entity;
+
+architecture rtl of comparator1bit is
+  signal na, nb : std_logic;
+begin
+  na <= not a;
+  nb <= not b;
+  eq <= (a and b) or (na and nb);
+  gt <= a and nb;
+  lt <= na and b;
+end architecture;`
+};
+
+// ── Layout Engine ──────────────────────────────────────────────────────────
+// Converts a circuit netlist into positioned nodes using layered layout.
+
+const GRID = 20;           // Logisim uses 10px grid; we use 20px
+const GATE_W = 80;
+const GATE_H = 60;
+const DFF_W = 100;
+const DFF_H = 80;
+const PORT_W = 20;
+const PORT_H = 20;
+const COL_GAP = 100;       // horizontal gap between gate columns
+const ROW_GAP = 50;        // vertical gap between gates in same column
+
+/**
+ * Lay out the circuit.
+ * @param {Object} netlist - { entity, inputs, outputs, signals, gates, clocked }
+ * @returns {Object} layout - { nodes, wires, width, height }
+ */
+function layoutCircuit(netlist) {
+  const { inputs = [], outputs = [], gates = [] } = netlist;
+
+  // 1. Topological sort gates
+  const sorted = topoSortGates(gates, inputs);
+
+  // 2. Assign layers (columns) to each gate
+  const gateLayers = assignGateLayers(sorted, inputs);
+  const numGateLayers = Math.max(0, ...Object.values(gateLayers)) + 1;
+
+  // 3. Build columns
+  const columns = {};
+  sorted.forEach(g => {
+    const l = gateLayers[g.id];
+    if (!columns[l]) columns[l] = [];
+    columns[l].push(g);
+  });
+
+  // 4. Compute x positions for each column
+  // Col 0 = inputs, col 1..n = gate layers, col n+1 = outputs
+  const inputX = GRID * 4;
+  const firstGateX = inputX + PORT_W + COL_GAP;
+  const colX = {};
+  for (let i = 0; i < numGateLayers; i++) {
+    colX[i] = firstGateX + i * (GATE_W + COL_GAP);
+  }
+  const outputX = firstGateX + numGateLayers * (GATE_W + COL_GAP);
+
+  // 5. Position nodes
+  const nodes = [];
+  const wireEndpoints = {}; // wireName -> {x, y} (the output pin)
+
+  // Input ports
+  const totalInputH = inputs.length * (PORT_H + ROW_GAP) - ROW_GAP;
+  const estimatedMidY = Math.max(
+    inputs.length,
+    ...Object.values(columns).map(c => c.length)
+  ) * (GATE_H + ROW_GAP) / 2 + GRID * 4;
+
+  inputs.forEach((name, i) => {
+    const x = inputX;
+    const y = GRID * 4 + i * (PORT_H + ROW_GAP + 10);
+    nodes.push({ type: 'input', name, x, y, w: PORT_W, h: PORT_H });
+    wireEndpoints[name] = { x: x + PORT_W, y: y + PORT_H / 2 };
+  });
+
+  // Gate nodes
+  sorted.forEach(gate => {
+    const layer = gateLayers[gate.id];
+    const col = columns[layer];
+    const idx = col.indexOf(gate);
+    const isFF = gate.type === 'DFF' || gate.type === 'JKFF' || gate.type === 'SRFF';
+    const gw = isFF ? DFF_W : GATE_W;
+    const gh = isFF ? DFF_H : GATE_H;
+    const x = colX[layer];
+    const y = GRID * 4 + idx * (gh + ROW_GAP);
+
+    nodes.push({ type: 'gate', gate, x, y, w: gw, h: gh });
+
+    // Output pin is on the right edge, vertically centered
+    wireEndpoints[gate.output] = { x: x + gw, y: y + gh / 2 };
+  });
+
+  // Output ports
+  outputs.forEach((name, i) => {
+    const x = outputX;
+    const y = GRID * 4 + i * (PORT_H + ROW_GAP + 10);
+    nodes.push({ type: 'output', name, x, y, w: PORT_W, h: PORT_H });
+  });
+
+  // 6. Build wires
+  const wires = [];
+
+  // Gate input wires
+  sorted.forEach(gate => {
+    const node = nodes.find(n => n.type === 'gate' && n.gate === gate);
+    if (!node) return;
+    const isFF = gate.type === 'DFF';
+    const numInputs = gate.inputs.length;
+
+    gate.inputs.forEach((srcName, pinIdx) => {
+      const src = wireEndpoints[srcName];
+      if (!src) return;
+      const dst = getInputPin(node, pinIdx, numInputs, isFF);
+      wires.push({ from: src, to: dst, name: srcName });
+    });
+  });
+
+  // Output port wires
+  outputs.forEach((name, i) => {
+    const src = wireEndpoints[name];
+    const node = nodes.find(n => n.type === 'output' && n.name === name);
+    if (!src || !node) return;
+    const dst = { x: node.x, y: node.y + node.h / 2 };
+    wires.push({ from: src, to: dst, name });
+  });
+
+  // 7. Compute canvas size
+  const allX = nodes.map(n => n.x + n.w);
+  const allY = nodes.map(n => n.y + n.h);
+  const width = Math.max(...allX) + GRID * 8;
+  const height = Math.max(...allY) + GRID * 8;
+
+  return { nodes, wires, width, height };
+}
+
+function getInputPin(node, pinIdx, numPins, isFF) {
+  const { x, y, w, h } = node;
+  if (isFF) {
+    // DFF: D at top-left area, CLK in middle-left, RST at bottom-left
+    const pins = [
+      { x, y: y + h * 0.25 },   // D
+      { x, y: y + h * 0.6  },   // CLK
+      { x, y: y + h * 0.85 },   // RST
+    ];
+    return pins[Math.min(pinIdx, pins.length - 1)];
+  }
+  if (numPins === 1) return { x, y: y + h / 2 };
+  const spacing = h / (numPins + 1);
+  return { x, y: y + spacing * (pinIdx + 1) };
+}
+
+function topoSortGates(gates, inputs) {
+  const available = new Set(inputs);
+  const remaining = [...gates];
+  const sorted = [];
+  let limit = gates.length * gates.length + 10;
+
+  while (remaining.length > 0 && limit-- > 0) {
+    let placed = false;
+    for (let i = 0; i < remaining.length; i++) {
+      if (remaining[i].inputs.every(inp => available.has(inp))) {
+        const [g] = remaining.splice(i, 1);
+        sorted.push(g);
+        available.add(g.output);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      // Break cycle
+      const g = remaining.shift();
+      sorted.push(g);
+      available.add(g.output);
+    }
+  }
+  return sorted;
+}
+
+function assignGateLayers(sorted, inputs) {
+  const layers = {};
+  const wireLayer = {};
+  inputs.forEach(i => (wireLayer[i] = 0));
+
+  sorted.forEach(gate => {
+    const depLayer = gate.inputs.reduce((max, inp) => Math.max(max, wireLayer[inp] || 0), 0);
+    const layer = depLayer;
+    layers[gate.id] = layer;
+    wireLayer[gate.output] = layer + 1;
+  });
+  return layers;
+}
+
+// ── Logisim-style Circuit Renderer ─────────────────────────────────────────
+
+// Logisim color palette
+const C = {
+  wire:       '#1a1aff',   // classic Logisim blue wire
+  wireActive: '#00cc00',
+  gateFill:   '#ffffff',
+  gateStroke: '#000000',
+  gateStrokeW: 2,
+  portFill:   '#00cc00',
+  portStroke: '#006600',
+  inputFill:  '#ffffff',
+  inputStroke:'#000000',
+  outputFill: '#ffffff',
+  outputStroke:'#000000',
+  pinDot:     '#1a1aff',
+  label:      '#000000',
+  labelFont:  '11px sans-serif',
+  titleFont:  'bold 12px sans-serif',
+  pinFont:    '10px sans-serif',
+  bg:         '#ffffff',
+  grid:       '#e8eaee',
+  gridMaj:    '#d0d4dc',
+  notBubble:  '#ffffff',
+  dffBg:      '#f0f0f0',
+  shadowColor:'rgba(0,0,0,0.08)',
+};
+
+class CircuitRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.layout = null;
+    this.scale = 1;
+    this.offsetX = 40;
+    this.offsetY = 40;
+    this._dragging = false;
+    this._lastMX = 0;
+    this._lastMY = 0;
+
+    this._bindEvents();
+  }
+
+  _bindEvents() {
+    const c = this.canvas;
+    c.addEventListener('mousedown', e => {
+      this._dragging = true;
+      this._lastMX = e.clientX;
+      this._lastMY = e.clientY;
+    });
+    window.addEventListener('mouseup', () => { this._dragging = false; });
+    window.addEventListener('mousemove', e => {
+      if (!this._dragging) {
+        // Update status bar position
+        const rect = c.getBoundingClientRect();
+        const cx = (e.clientX - rect.left - this.offsetX) / this.scale;
+        const cy = (e.clientY - rect.top - this.offsetY) / this.scale;
+        const sbPos = document.getElementById('sb-pos');
+        if (sbPos) sbPos.textContent = `x: ${Math.round(cx)}, y: ${Math.round(cy)}`;
+        return;
+      }
+      const dx = e.clientX - this._lastMX;
+      const dy = e.clientY - this._lastMY;
+      this.offsetX += dx;
+      this.offsetY += dy;
+      this._lastMX = e.clientX;
+      this._lastMY = e.clientY;
+      this.draw();
+    });
+    c.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      this.offsetX = mx - (mx - this.offsetX) * factor;
+      this.offsetY = my - (my - this.offsetY) * factor;
+      this.scale *= factor;
+      this.scale = Math.max(0.2, Math.min(4, this.scale));
+      this.draw();
+      updateZoomLabel();
+    }, { passive: false });
+  }
+
+  setLayout(layout) {
+    this.layout = layout;
+    this.fitToContent();
+    this.draw();
+  }
+
+  fitToContent() {
+    if (!this.layout) return;
+    const wrap = this.canvas.parentElement;
+    const W = wrap.clientWidth;
+    const H = wrap.clientHeight;
+    const sx = (W - 80) / this.layout.width;
+    const sy = (H - 80) / this.layout.height;
+    this.scale = Math.min(sx, sy, 1.5);
+    this.scale = Math.max(0.3, this.scale);
+    const cw = this.layout.width * this.scale;
+    const ch = this.layout.height * this.scale;
+    this.offsetX = (W - cw) / 2;
+    this.offsetY = (H - ch) / 2;
+  }
+
+  resize() {
+    const wrap = this.canvas.parentElement;
+    this.canvas.width = wrap.clientWidth;
+    this.canvas.height = wrap.clientHeight;
+    this.draw();
+  }
+
+  draw() {
+    const { canvas, ctx, layout } = this;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Background
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid
+    this._drawGrid();
+
+    if (!layout) return;
+
+    ctx.save();
+    ctx.translate(this.offsetX, this.offsetY);
+    ctx.scale(this.scale, this.scale);
+
+    // Draw wires first (below gates)
+    layout.wires.forEach(w => this._drawWire(w));
+
+    // Draw nodes
+    layout.nodes.forEach(n => {
+      if (n.type === 'gate') this._drawGate(n);
+      else if (n.type === 'input') this._drawInputPort(n);
+      else if (n.type === 'output') this._drawOutputPort(n);
+    });
+
+    ctx.restore();
+  }
+
+  _drawGrid() {
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    const gridSize = 20 * this.scale;
+    if (gridSize < 6) return;
+
+    const ox = ((this.offsetX % gridSize) + gridSize) % gridSize;
+    const oy = ((this.offsetY % gridSize) + gridSize) % gridSize;
+
+    ctx.save();
+    for (let x = ox; x < W; x += gridSize) {
+      for (let y = oy; y < H; y += gridSize) {
+        const isMaj = Math.abs(Math.round((x - this.offsetX) / gridSize)) % 5 === 0 &&
+                      Math.abs(Math.round((y - this.offsetY) / gridSize)) % 5 === 0;
+        ctx.fillStyle = isMaj ? C.gridMaj : C.grid;
+        ctx.fillRect(x - 0.5, y - 0.5, 1, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  _drawWire(wire) {
+    const ctx = this.ctx;
+    const { from, to } = wire;
+
+    ctx.save();
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Orthogonal routing: horizontal then vertical then horizontal
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+
+    const midX = from.x + (to.x - from.x) * 0.5;
+    if (Math.abs(from.y - to.y) < 2) {
+      // Straight horizontal
+      ctx.lineTo(to.x, to.y);
+    } else {
+      ctx.lineTo(midX, from.y);
+      ctx.lineTo(midX, to.y);
+      ctx.lineTo(to.x, to.y);
+    }
+
+    ctx.stroke();
+
+    // Draw junction dot if wire branches (simplified: just at endpoints)
+    ctx.restore();
+  }
+
+  _drawInputPort(node) {
+    const ctx = this.ctx;
+    const { x, y, name } = node;
+    const size = 16;
+
+    ctx.save();
+
+    // Pin circle (Logisim style: small filled circle)
+    ctx.fillStyle = C.portFill;
+    ctx.strokeStyle = C.portStroke;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label to the left
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, x - 4, y + size/2);
+
+    ctx.restore();
+  }
+
+  _drawOutputPort(node) {
+    const ctx = this.ctx;
+    const { x, y, name } = node;
+    const size = 16;
+
+    ctx.save();
+
+    // Square output port (Logisim style)
+    ctx.fillStyle = '#ffff88';
+    ctx.strokeStyle = C.outputStroke;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    roundRect(ctx, x, y, size, size, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Label to the right
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, x + size + 4, y + size/2);
+
+    ctx.restore();
+  }
+
+  _drawGate(node) {
+    const { gate, x, y, w, h } = node;
+    const ctx = this.ctx;
+    const type = gate.type.toUpperCase();
+
+    ctx.save();
+
+    if (type === 'DFF' || type === 'JKFF' || type === 'SRFF') {
+      this._drawDFF(gate, x, y, w, h);
+    } else if (type === 'MUX') {
+      this._drawMUX(gate, x, y, w, h);
+    } else if (type === 'AND' || type === 'NAND') {
+      this._drawAND(gate, x, y, w, h, type === 'NAND');
+    } else if (type === 'OR' || type === 'NOR') {
+      this._drawOR(gate, x, y, w, h, type === 'NOR', false);
+    } else if (type === 'XOR' || type === 'XNOR') {
+      this._drawOR(gate, x, y, w, h, type === 'XNOR', true);
+    } else if (type === 'NOT' || type === 'BUFFER') {
+      this._drawNOT(gate, x, y, w, h, type === 'NOT');
+    } else {
+      this._drawBox(gate, x, y, w, h);
+    }
+
+    ctx.restore();
+  }
+
+  _drawAND(gate, x, y, w, h, inverted) {
+    const ctx = this.ctx;
+    const cx = x;
+    const cy = y;
+    const bw = w * 0.85;
+    const bh = h;
+    const r = bh / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + bw - r, cy);
+    ctx.arc(cx + bw - r, cy + r, r, -Math.PI/2, Math.PI/2);
+    ctx.lineTo(cx, cy + bh);
+    ctx.closePath();
+    ctx.fillStyle = C.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.stroke();
+
+    // Input pins (left side)
+    this._drawInputPins(gate, cx, cy, bh);
+
+    // Output
+    const outX = cx + bw;
+    const outY = cy + r;
+    if (inverted) {
+      ctx.beginPath();
+      ctx.arc(outX + 5, outY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.notBubble;
+      ctx.fill();
+      ctx.strokeStyle = C.gateStroke;
+      ctx.lineWidth = C.gateStrokeW;
+      ctx.stroke();
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX + 9, outY); ctx.lineTo(outX + 15, outY); ctx.stroke();
+    } else {
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX, outY); ctx.lineTo(outX + 10, outY); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawOR(gate, x, y, w, h, inverted, xor) {
+    const ctx = this.ctx;
+    const bh = h;
+    const bw = w * 0.88;
+
+    ctx.save();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.fillStyle = C.gateFill;
+
+    const drawBody = (ox) => {
+      ctx.beginPath();
+      ctx.moveTo(x + ox, y);
+      ctx.bezierCurveTo(x + ox + bw * 0.4, y, x + ox + bw, y + bh * 0.1, x + ox + bw, y + bh / 2);
+      ctx.bezierCurveTo(x + ox + bw, y + bh * 0.9, x + ox + bw * 0.4, y + bh, x + ox, y + bh);
+      ctx.bezierCurveTo(x + ox + bw * 0.25, y + bh * 0.75, x + ox + bw * 0.25, y + bh * 0.25, x + ox, y);
+      ctx.closePath();
+    };
+
+    // XOR extra arc
+    if (xor) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x - 5, y);
+      ctx.bezierCurveTo(x + bw * 0.2, y + bh * 0.25, x + bw * 0.2, y + bh * 0.75, x - 5, y + bh);
+      ctx.strokeStyle = C.gateStroke;
+      ctx.lineWidth = C.gateStrokeW;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    drawBody(0);
+    ctx.fill();
+    ctx.stroke();
+
+    // Input pins
+    this._drawInputPins(gate, x, y, bh);
+
+    // Output
+    const outX = x + bw;
+    const outY = y + bh / 2;
+    if (inverted) {
+      ctx.beginPath();
+      ctx.arc(outX + 5, outY, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.notBubble;
+      ctx.fill();
+      ctx.strokeStyle = C.gateStroke;
+      ctx.lineWidth = C.gateStrokeW;
+      ctx.stroke();
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX + 9, outY); ctx.lineTo(outX + 15, outY); ctx.stroke();
+    } else {
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(outX, outY); ctx.lineTo(outX + 10, outY); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  _drawNOT(gate, x, y, w, h, inverted) {
+    const ctx = this.ctx;
+    const tw = w * 0.7;
+    const mid = y + h / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + tw, mid);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+    ctx.fillStyle = C.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.stroke();
+
+    if (inverted) {
+      ctx.beginPath();
+      ctx.arc(x + tw + 5, mid, 4, 0, Math.PI * 2);
+      ctx.fillStyle = C.notBubble;
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Input stub
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x - 10, mid); ctx.lineTo(x, mid); ctx.stroke();
+    // Output stub
+    ctx.beginPath();
+    if (inverted) {
+      ctx.moveTo(x + tw + 9, mid); ctx.lineTo(x + tw + 15, mid);
+    } else {
+      ctx.moveTo(x + tw, mid); ctx.lineTo(x + tw + 10, mid);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawDFF(gate, x, y, w, h) {
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.fillStyle = C.dffBg;
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    roundRect(ctx, x, y, w, h, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // Title
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('D', x + w / 2, y + 4);
+
+    // Clock triangle
+    const ckY = y + h * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(x, ckY - 5);
+    ctx.lineTo(x + 10, ckY);
+    ctx.lineTo(x, ckY + 5);
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Pin labels
+    ctx.font = C.pinFont;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const pins = gate.inputs.slice(0, 3);
+    const pinLabels = ['D', '>', 'R'];
+    const pinYs = [h * 0.25, h * 0.55, h * 0.82];
+    pins.forEach((_, i) => {
+      ctx.fillStyle = '#333';
+      ctx.fillText(pinLabels[i] || pins[i], x + 4, y + pinYs[i]);
+      // Stub
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, y + pinYs[i]);
+      ctx.lineTo(x, y + pinYs[i]);
+      ctx.stroke();
+    });
+
+    // Output labels
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#333';
+    ctx.fillText('Q', x + w - 4, y + h * 0.3);
+    // Output stub
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h * 0.3);
+    ctx.lineTo(x + w + 10, y + h * 0.3);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawMUX(gate, x, y, w, h) {
+    const ctx = this.ctx;
+    const sh = h * 0.15; // shear
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + w, y + sh);
+    ctx.lineTo(x + w, y + h - sh);
+    ctx.lineTo(x, y + h);
+    ctx.closePath();
+    ctx.fillStyle = C.gateFill;
+    ctx.fill();
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    ctx.stroke();
+
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('MUX', x + w / 2, y + h / 2);
+
+    this._drawInputPins(gate, x, y, h);
+    // Output
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h / 2);
+    ctx.lineTo(x + w + 10, y + h / 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  _drawBox(gate, x, y, w, h) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.fillStyle = C.gateFill;
+    ctx.strokeStyle = C.gateStroke;
+    ctx.lineWidth = C.gateStrokeW;
+    roundRect(ctx, x, y, w, h, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = C.label;
+    ctx.font = C.titleFont;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gate.type, x + w / 2, y + h / 2);
+
+    this._drawInputPins(gate, x, y, h);
+    ctx.strokeStyle = C.wire;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h / 2);
+    ctx.lineTo(x + w + 10, y + h / 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawInputPins(gate, x, y, h) {
+    const ctx = this.ctx;
+    const n = gate.inputs.length;
+    for (let i = 0; i < n; i++) {
+      const py = n === 1 ? y + h / 2 : y + h * (i + 1) / (n + 1);
+      ctx.strokeStyle = C.wire;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x - 10, py);
+      ctx.lineTo(x, py);
+      ctx.stroke();
+    }
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ── App Controller ──────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VHDL LANGUAGE SERVER  (pure JS, runs inline — no WASM needed)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VHDL_KEYWORDS = [
+  'abs','access','after','alias','all','and','architecture','array','assert',
+  'attribute','begin','block','body','buffer','bus','case','component',
+  'configuration','constant','disconnect','downto','else','elsif','end',
+  'entity','exit','file','for','function','generate','generic','group',
+  'guarded','if','impure','in','inertial','inout','is','label','library',
+  'linkage','literal','loop','map','mod','nand','new','next','nor','not',
+  'null','of','on','open','or','others','out','package','port','postponed',
+  'procedure','process','protected','pure','range','record','register',
+  'reject','rem','report','return','rol','ror','select','severity','signal',
+  'shared','sla','sll','sra','srl','subtype','then','to','transport','type',
+  'unaffected','units','until','use','variable','wait','when','while','with',
+  'xnor','xor'
+];
+
+const VHDL_TYPES = [
+  'std_logic','std_logic_vector','std_ulogic','std_ulogic_vector',
+  'bit','bit_vector','boolean','integer','natural','positive','real',
+  'character','string','time','severity_level','signed','unsigned'
+];
+
+const VHDL_ATTRIBUTES = [
+  'event','stable','active','quiet','transaction','delayed',
+  'left','right','low','high','ascending','length','range','reverse_range',
+  'image','value','pos','val','pred','succ','leftof','rightof'
+];
+
+const VHDL_CONSTANTS = [
+  "'0'","'1'","'Z'","'X'","'U'","'W'","'L'","'H'",'-',
+  'true','false','rising_edge','falling_edge'
+];
+
+const VHDL_SNIPPETS = [
+  {
+    label: 'entity',
+    detail: 'Entity declaration',
+    insertText: `entity \${1:name} is\n  port (\n    \${2:port_name} : in std_logic\n  );\nend entity \${1:name};`,
+    documentation: 'VHDL entity declaration with port map'
+  },
+  {
+    label: 'architecture',
+    detail: 'Architecture body',
+    insertText: `architecture \${1:rtl} of \${2:entity_name} is\n  \${3:-- signals}\nbegin\n  \${4:-- concurrent statements}\nend architecture \${1:rtl};`,
+    documentation: 'VHDL architecture body'
+  },
+  {
+    label: 'process',
+    detail: 'Process statement',
+    insertText: `process(\${1:clk})\nbegin\n  if rising_edge(\${1:clk}) then\n    \${2:null};\n  end if;\nend process;`,
+    documentation: 'Clocked process with rising_edge detection'
+  },
+  {
+    label: 'process_async',
+    detail: 'Process with async reset',
+    insertText: `process(\${1:clk}, \${2:rst})\nbegin\n  if \${2:rst} = '1' then\n    \${3:q} <= '0';\n  elsif rising_edge(\${1:clk}) then\n    \${3:q} <= \${4:d};\n  end if;\nend process;`,
+    documentation: 'Process with asynchronous reset'
+  },
+  {
+    label: 'if',
+    detail: 'If statement',
+    insertText: `if \${1:condition} then\n  \${2:null};\nelsif \${3:condition} then\n  \${4:null};\nelse\n  \${5:null};\nend if;`,
+    documentation: 'VHDL if/elsif/else statement'
+  },
+  {
+    label: 'case',
+    detail: 'Case statement',
+    insertText: `case \${1:expression} is\n  when \${2:value} =>\n    \${3:null};\n  when others =>\n    null;\nend case;`,
+    documentation: 'VHDL case statement'
+  },
+  {
+    label: 'for_generate',
+    detail: 'For generate',
+    insertText: `\${1:label}: for \${2:i} in 0 to \${3:N}-1 generate\n  \${4:-- component instantiations}\nend generate \${1:label};`,
+    documentation: 'For-generate statement for structural replication'
+  },
+  {
+    label: 'component',
+    detail: 'Component declaration',
+    insertText: `component \${1:name} is\n  port (\n    \${2:port} : in std_logic\n  );\nend component;`,
+    documentation: 'Component declaration'
+  },
+  {
+    label: 'signal',
+    detail: 'Signal declaration',
+    insertText: `signal \${1:name} : \${2:std_logic};`,
+    documentation: 'Signal declaration'
+  },
+  {
+    label: 'port_map',
+    detail: 'Port map instantiation',
+    insertText: `\${1:label}: \${2:component_name}\n  port map (\n    \${3:port} => \${4:signal}\n  );`,
+    documentation: 'Component instantiation with port map'
+  },
+  {
+    label: 'library_use',
+    detail: 'Library/use clause',
+    insertText: `library ieee;\nuse ieee.std_logic_1164.all;\nuse ieee.numeric_std.all;`,
+    documentation: 'Standard IEEE library imports'
+  },
+  {
+    label: 'when_else',
+    detail: 'Conditional signal assignment',
+    insertText: `\${1:signal} <= \${2:a} when \${3:condition} else\n             \${4:b};`,
+    documentation: 'Conditional (when/else) signal assignment'
+  },
+  {
+    label: 'with_select',
+    detail: 'Selected signal assignment',
+    insertText: `with \${1:sel} select\n  \${2:output} <= \${3:a} when "00",\n                 \${4:b} when "01",\n                 \${5:c} when others;`,
+    documentation: 'Selected (with/select) signal assignment'
+  }
+];
+
+// ── VHDL Parser (lightweight, for diagnostics) ───────────────────────────
+
+function parseVHDL(code) {
+  const diagnostics = [];
+  const lines = code.split('\n');
+
+  // Track structure
+  let entityFound = false;
+  let archFound = false;
+  let beginCount = 0;
+  let endCount = 0;
+  let openParens = 0;
+  let entityName = null;
+  let archEntityRef = null;
+
+  // Extract declared signals and ports for undefined-signal checking
+  const declaredNames = new Set(VHDL_KEYWORDS);
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    // Strip comments
+    const commentIdx = raw.indexOf('--');
+    const line = commentIdx >= 0 ? raw.slice(0, commentIdx) : raw;
+    const trimmed = line.trim().toLowerCase();
+
+    // Count parens
+    for (const ch of line) {
+      if (ch === '(') openParens++;
+      else if (ch === ')') openParens--;
+    }
+
+    // Entity declaration
+    const entityMatch = trimmed.match(/^entity\s+(\w+)\s+is\b/);
+    if (entityMatch) {
+      if (entityFound) {
+        diagnostics.push({ line: i, msg: 'Multiple entity declarations found', severity: 'warning' });
+      }
+      entityFound = true;
+      entityName = entityMatch[1];
+      declaredNames.add(entityMatch[1]);
+    }
+
+    // Architecture
+    const archMatch = trimmed.match(/^architecture\s+\w+\s+of\s+(\w+)\s+is\b/);
+    if (archMatch) {
+      archFound = true;
+      archEntityRef = archMatch[1];
+      if (entityName && archMatch[1].toLowerCase() !== entityName.toLowerCase()) {
+        diagnostics.push({
+          line: i,
+          msg: `Architecture refers to entity '${archMatch[1]}' but entity '${entityName}' was declared`,
+          severity: 'error'
+        });
+      }
+    }
+
+    // Collect signal/port declarations
+    const sigMatch = trimmed.match(/^signal\s+([\w,\s]+)\s*:/);
+    if (sigMatch) {
+      sigMatch[1].split(',').forEach(n => declaredNames.add(n.trim().toLowerCase()));
+    }
+    const portMatch = trimmed.match(/^\s*([\w,\s]+)\s*:\s*(in|out|inout|buffer)\b/);
+    if (portMatch) {
+      portMatch[1].split(',').forEach(n => declaredNames.add(n.trim().toLowerCase()));
+    }
+
+    // Count begin/end (rough)
+    if (/\bbegin\b/.test(trimmed)) beginCount++;
+    if (/\bend\b/.test(trimmed)) endCount++;
+
+    // Check for common syntax issues
+    // Missing semicolon at end of concurrent assignment (simplified)
+    if (trimmed && !trimmed.startsWith('--')) {
+      // Port mode without std_logic type specified
+      if (/:\s*(in|out|inout|buffer)\s*$/.test(trimmed)) {
+        diagnostics.push({
+          line: i,
+          msg: 'Port declaration appears incomplete — missing type (e.g. std_logic)',
+          severity: 'warning'
+        });
+      }
+
+      // Signal assignment with = instead of <=
+      if (/\bsignal\b.*:=/.test(trimmed)) {
+        // This is actually fine for initial values — skip
+      } else if (/^\w+\s*=[^=]/.test(trimmed) && !/^\w+\s*=>/.test(trimmed)) {
+        diagnostics.push({
+          line: i,
+          msg: "Use '<=' for signal assignment, not '='",
+          severity: 'error'
+        });
+      }
+    }
+
+    // Detect 'process' without sensitivity list or clk
+    if (/^process\s*$/.test(trimmed)) {
+      diagnostics.push({
+        line: i,
+        msg: 'Process has no sensitivity list — add (clk) or (clk, rst)',
+        severity: 'warning'
+      });
+    }
+  }
+
+  // Structural checks
+  if (code.trim().length > 10) {
+    if (!entityFound) {
+      diagnostics.push({ line: 0, msg: 'No entity declaration found', severity: 'warning' });
+    }
+    if (entityFound && !archFound) {
+      diagnostics.push({ line: 0, msg: 'Entity declared but no architecture found', severity: 'warning' });
+    }
+    if (openParens > 0) {
+      diagnostics.push({ line: lines.length - 1, msg: `${openParens} unclosed parenthesis`, severity: 'error' });
+    } else if (openParens < 0) {
+      diagnostics.push({ line: lines.length - 1, msg: 'Extra closing parenthesis', severity: 'error' });
+    }
+  }
+
+  return diagnostics;
+}
+
+// Convert our diagnostics to Monaco markers
+function getDiagnosticMarkers(code, monaco) {
+  const diags = parseVHDL(code);
+  return diags.map(d => ({
+    severity: d.severity === 'error'
+      ? monaco.MarkerSeverity.Error
+      : monaco.MarkerSeverity.Warning,
+    startLineNumber: d.line + 1,
+    startColumn: 1,
+    endLineNumber: d.line + 1,
+    endColumn: 200,
+    message: d.msg,
+    source: 'VHDL-LS'
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MONACO SETUP
+// ═══════════════════════════════════════════════════════════════════════════
+
+let monacoEditor = null;
+let renderer = null;
+let currentNetlist = null;
+
+// If the Monaco loader didn't arrive (offline, blocked CDN), say so instead of throwing.
+const monacoLoaded = typeof require === 'function' && typeof require.config === 'function';
+if (!monacoLoaded) {
+  const panel = document.getElementById('error-panel');
+  panel.textContent = 'The code editor failed to load. Check your connection and reload the page.';
+  panel.style.display = 'block';
+}
+const amdRequire = monacoLoaded ? require : Object.assign(() => {}, { config() {} });
+
+amdRequire.config({
+  paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }
+});
+
+amdRequire(['vs/editor/editor.main'], function(monaco) {
+  // ── 1. Register VHDL language ─────────────────────────────────────────
+
+  monaco.languages.register({ id: 'vhdl', extensions: ['.vhd', '.vhdl'], aliases: ['VHDL', 'vhdl'] });
+
+  // ── 2. Monarch tokenizer (full VHDL grammar) ──────────────────────────
+
+  monaco.languages.setMonarchTokensProvider('vhdl', {
+    ignoreCase: true,
+    defaultToken: 'invalid',
+    tokenPostfix: '.vhdl',
+
+    keywords: VHDL_KEYWORDS,
+    types: VHDL_TYPES,
+    attributes: VHDL_ATTRIBUTES,
+
+    operators: [
+      '<=', ':=', '=>', '=', '/=', '<', '>', '>=',
+      '+', '-', '*', '/', '**', '&', '|'
+    ],
+
+    symbols: /[=><!~?:&|+\-*\/\^%]+/,
+    escapes: /\\(?:[abfnrtv\\"']|x[0-9A-Fa-f]{1,4}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})/,
+
+    tokenizer: {
+      root: [
+        // Comments
+        [/--.*$/, 'comment'],
+
+        // String literals
+        [/"([^"\\]|\\.)*$/, 'string.invalid'],
+        [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
+
+        // Char literals  
+        [/'[^']'/, 'string.char'],
+        [/'[01ZXUWLH-]'/, 'constant.logic'],
+
+        // Numbers
+        [/\d+#[\da-fA-F_]+#/, 'number.based'],
+        [/\d[\d_]*\.[\d_]+([eE][+-]?\d[\d_]*)?/, 'number.float'],
+        [/\d[\d_]*/, 'number'],
+
+        // Attributes: word'attribute
+        [/(\w+)('(?:event|stable|active|quiet|transaction|left|right|low|high|ascending|length|range|image|value|pos|val|pred|succ))/, ['identifier', 'attribute']],
+
+        // Keywords, types, identifiers
+        [/[a-zA-Z_]\w*/, {
+          cases: {
+            '@types': 'type',
+            '@keywords': 'keyword',
+            '@default': 'identifier'
+          }
+        }],
+
+        // Operators
+        [/<=|:=|=>|\/=|[=<>!]/, 'operator'],
+        [/[+\-*\/&|]/, 'operator'],
+
+        // Delimiters
+        [/[{}()\[\]]/, '@brackets'],
+        [/[;,.]/, 'delimiter'],
+
+        // Whitespace
+        [/[ \t\r\n]+/, 'white'],
+      ],
+
+      string: [
+        [/[^\\"]+/, 'string'],
+        [/@escapes/, 'string.escape'],
+        [/\\./, 'string.escape.invalid'],
+        [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
+      ],
+    }
+  });
+
+  // ── 3. Language configuration (brackets, comments, auto-close) ─────────
+
+  monaco.languages.setLanguageConfiguration('vhdl', {
+    comments: {
+      lineComment: '--',
+    },
+    brackets: [
+      ['(', ')'],
+      ['[', ']'],
+    ],
+    autoClosingPairs: [
+      { open: '(', close: ')' },
+      { open: '[', close: ']' },
+      { open: '"', close: '"' },
+    ],
+    surroundingPairs: [
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+    ],
+    wordPattern: /(-?\d*\.\d\w*)|([^`~!@#%^&*()\-=+[{\]}\\|;:'",.<>\/?\s]+)/g,
+    indentationRules: {
+      increaseIndentPattern: /\b(begin|then|loop|generate|is)\s*$/i,
+      decreaseIndentPattern: /^\s*(end|elsif|else|when)\b/i,
+    },
+    folding: {
+      markers: {
+        start: /\b(begin|is)\s*$/i,
+        end: /^\s*end\b/i
+      }
+    }
+  });
+
+  // ── 4. Context-aware Completion provider ──────────────────────────────
+
+  // Parse the document and return a rich symbol table
+  function buildSymbolTable(code) {
+    const symbols = { signals: [], ports: [], constants: [], types: [], components: [], libraries: [] };
+    const lines = code.split('\n');
+    lines.forEach((rawLine, li) => {
+      const line = rawLine.replace(/--.*$/, '').trim();
+      const lo = line.toLowerCase();
+
+      // ports:  name : in/out/inout/buffer type
+      let m = line.match(/^\s*([\w,\s]+?)\s*:\s*(in|out|inout|buffer)\s+([\w_]+(?:\s*\(.*?\))?)/i);
+      if (m) {
+        m[1].split(',').forEach(n => {
+          const name = n.trim();
+          if (name) symbols.ports.push({ name, mode: m[2].toLowerCase(), type: m[3], line: li });
+        });
+      }
+
+      // signals:  signal name : type
+      m = line.match(/^signal\s+([\w,\s]+?)\s*:\s*([\w_]+(?:\s*\(.*?\))?)/i);
+      if (m) {
+        m[1].split(',').forEach(n => {
+          const name = n.trim();
+          if (name) symbols.signals.push({ name, type: m[2], line: li });
+        });
+      }
+
+      // constants:  constant name : type := value
+      m = line.match(/^constant\s+(\w+)\s*:\s*([\w_]+)/i);
+      if (m) symbols.constants.push({ name: m[1], type: m[2], line: li });
+
+      // subtypes/types
+      m = line.match(/^(?:sub)?type\s+(\w+)\s+is\b/i);
+      if (m) symbols.types.push({ name: m[1], line: li });
+
+      // components
+      m = line.match(/^component\s+(\w+)\b/i);
+      if (m) symbols.components.push({ name: m[1], line: li });
+
+      // library/use
+      m = line.match(/^library\s+(\w+)/i);
+      if (m) symbols.libraries.push(m[1]);
+    });
+    return symbols;
+  }
+
+  // Determine the semantic context at the cursor
+  function getContext(model, position) {
+    const lineText = model.getLineContent(position.lineNumber);
+    const textBefore = lineText.substring(0, position.column - 1);
+    const lo = textBefore.toLowerCase().trim();
+
+    // Scan backwards to find enclosing block
+    let inPortDecl = false, inArchDecl = false, inProcess = false,
+        inGeneric = false, inCase = false, afterAssign = false,
+        afterColon = false, afterLibrary = false, afterUse = false,
+        afterEntity = false, afterOf = false, topLevel = true,
+        inPortMap = false;
+
+    // Look at current line
+    if (/:\s*(in|out|inout|buffer)?\s*$/.test(lo)) afterColon = true;
+    if (/\buse\s+/.test(lo)) afterUse = true;
+    if (/\blibrary\s+/.test(lo)) afterLibrary = true;
+    if (/<=\s*$/.test(lo) || /<=\s*\w*$/.test(lo)) afterAssign = true;
+    if (/\bof\s+$/.test(lo)) afterOf = true;
+    if (/\bentity\s+$/.test(lo)) { afterEntity = true; }
+
+    // Scan backwards for block context
+    for (let l = position.lineNumber - 1; l >= 0 && l >= position.lineNumber - 80; l--) {
+      const bl = model.getLineContent(l).replace(/--.*$/, '').trim().toLowerCase();
+      if (/\bport\s*\(/.test(bl) || /\bport\s*map\s*\(/.test(bl)) {
+        inPortDecl = true; break;
+      }
+      if (/\bgeneric\s*\(/.test(bl)) { inGeneric = true; break; }
+      if (/\bprocess\b/.test(bl)) { inProcess = true; break; }
+      if (/\bcase\s+\w+\s+is/.test(bl)) { inCase = true; break; }
+      if (/\barchitecture\b/.test(bl)) { inArchDecl = true; break; }
+    }
+
+    return { inPortDecl, inArchDecl, inProcess, inGeneric, inCase,
+             afterAssign, afterColon, afterLibrary, afterUse,
+             afterEntity, afterOf, inPortMap, lo, lineText, textBefore };
+  }
+
+  const STD_LIBRARIES = ['ieee', 'std', 'work'];
+  const IEEE_PACKAGES = [
+    'ieee.std_logic_1164.all',
+    'ieee.numeric_std.all',
+    'ieee.std_logic_arith.all',
+    'ieee.std_logic_unsigned.all',
+    'ieee.std_logic_signed.all',
+    'ieee.math_real.all',
+    'ieee.math_complex.all',
+  ];
+
+  // Extended type completions with common vector widths
+  const TYPE_COMPLETIONS = [
+    { label: 'std_logic',               insert: 'std_logic',                           detail: 'Single-bit logic' },
+    { label: 'std_logic_vector(7 downto 0)',  insert: 'std_logic_vector(7 downto 0)',  detail: '8-bit vector' },
+    { label: 'std_logic_vector(15 downto 0)', insert: 'std_logic_vector(15 downto 0)',detail: '16-bit vector' },
+    { label: 'std_logic_vector(31 downto 0)', insert: 'std_logic_vector(31 downto 0)',detail: '32-bit vector' },
+    { label: 'std_logic_vector(N downto 0)',  insert: 'std_logic_vector(${1:N} downto 0)', detail: 'N-bit vector (snippet)', snippet: true },
+    { label: 'unsigned(7 downto 0)',     insert: 'unsigned(7 downto 0)',               detail: '8-bit unsigned' },
+    { label: 'unsigned(N downto 0)',     insert: 'unsigned(${1:N} downto 0)',          detail: 'N-bit unsigned (snippet)', snippet: true },
+    { label: 'signed(7 downto 0)',       insert: 'signed(7 downto 0)',                 detail: '8-bit signed' },
+    { label: 'signed(N downto 0)',       insert: 'signed(${1:N} downto 0)',            detail: 'N-bit signed (snippet)', snippet: true },
+    { label: 'integer',                  insert: 'integer',                            detail: 'Integer type' },
+    { label: 'integer range 0 to N',     insert: 'integer range 0 to ${1:255}',        detail: 'Ranged integer', snippet: true },
+    { label: 'natural',                  insert: 'natural',                            detail: 'Natural (≥0) integer' },
+    { label: 'positive',                 insert: 'positive',                           detail: 'Positive (≥1) integer' },
+    { label: 'boolean',                  insert: 'boolean',                            detail: 'Boolean type' },
+    { label: 'bit',                      insert: 'bit',                                detail: 'Single-bit (0/1 only)' },
+    { label: 'bit_vector(7 downto 0)',   insert: 'bit_vector(7 downto 0)',             detail: '8-bit bit_vector' },
+    { label: 'real',                     insert: 'real',                               detail: 'Floating-point (simulation only)' },
+    { label: 'time',                     insert: 'time',                               detail: 'Time type (ns, ps, …)' },
+    { label: 'string',                   insert: 'string',                             detail: 'String type' },
+  ];
+
+  // Port-mode completions
+  const PORT_MODES = [
+    { label: 'in',     detail: 'Input port — driven from outside'     },
+    { label: 'out',    detail: 'Output port — driven from inside'      },
+    { label: 'inout',  detail: 'Bidirectional port'                    },
+    { label: 'buffer', detail: 'Output readable internally'            },
+  ];
+
+  // Logic literal completions
+  const LOGIC_LITERALS = [
+    { v: "'0'",   doc: 'Logic 0 (driven low)'     },
+    { v: "'1'",   doc: 'Logic 1 (driven high)'    },
+    { v: "'Z'",   doc: 'High impedance'            },
+    { v: "'X'",   doc: 'Unknown / don\'t care'    },
+    { v: "'U'",   doc: 'Uninitialized'             },
+    { v: "'L'",   doc: 'Weak 0'                    },
+    { v: "'H'",   doc: 'Weak 1'                    },
+    { v: "'W'",   doc: 'Weak unknown'              },
+    { v: "'-'",   doc: 'Don\'t care (synthesis)'  },
+  ];
+
+  // Keywords grouped by where they appear
+  const KW_CONCURRENT = ['when','else','with','select','generate','component','process','assert','report'];
+  const KW_SEQUENTIAL  = ['if','elsif','else','end','then','case','when','loop','for','while','next','exit','return','wait','null','report','assert','variable'];
+  const KW_DECL        = ['signal','constant','variable','type','subtype','component','attribute','alias','file'];
+  const KW_TOP         = ['library','use','entity','architecture','package','configuration'];
+
+  monaco.languages.registerCompletionItemProvider('vhdl', {
+    triggerCharacters: ["'", '.', ' ', ':', '(', ',', '>'],
+
+    provideCompletionItems(model, position) {
+      const word  = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,        endColumn:    word.endColumn
+      };
+
+      const ctx  = getContext(model, position);
+      const syms = buildSymbolTable(model.getValue());
+      const sugg = [];
+
+      const kw  = (label, doc) => sugg.push({ label, kind: monaco.languages.CompletionItemKind.Keyword,   insertText: label, range, detail: doc || 'keyword', sortText: '3' + label });
+      const typ = (label, insert, detail, isSnippet) => sugg.push({
+        label, kind: monaco.languages.CompletionItemKind.TypeParameter,
+        insertText: insert,
+        insertTextRules: isSnippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : 0,
+        range, detail, sortText: '2' + label
+      });
+      const snip = (s) => sugg.push({
+        label: s.label, kind: monaco.languages.CompletionItemKind.Snippet,
+        insertText: s.insertText,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+        range, detail: s.detail, documentation: { value: s.documentation }, sortText: '0' + s.label
+      });
+      const sym = (name, kind, detail) => sugg.push({
+        label: name, kind, insertText: name, range, detail, sortText: '1' + name
+      });
+
+      // ── After 'library' keyword
+      if (ctx.afterLibrary) {
+        STD_LIBRARIES.forEach(l => kw(l, 'Library name'));
+        return { suggestions: sugg };
+      }
+
+      // ── After 'use' keyword — package completions
+      if (ctx.afterUse) {
+        IEEE_PACKAGES.forEach(pkg => sugg.push({
+          label: pkg, kind: monaco.languages.CompletionItemKind.Module,
+          insertText: pkg + ';', range,
+          detail: 'IEEE package', sortText: '0' + pkg
+        }));
+        STD_LIBRARIES.forEach(l => sugg.push({
+          label: l + '.', kind: monaco.languages.CompletionItemKind.Module,
+          insertText: l + '.', range, detail: 'Library', sortText: '1' + l
+        }));
+        return { suggestions: sugg };
+      }
+
+      // ── After dot (library.package completion)
+      if (ctx.textBefore.trim().endsWith('.')) {
+        const before = ctx.textBefore.trim().toLowerCase();
+        if (before.startsWith('use ') || before.startsWith('use\t')) {
+          IEEE_PACKAGES.filter(p => p.startsWith(before.split('use ')[1] || '')).forEach(pkg => {
+            const parts = pkg.split('.');
+            sugg.push({ label: parts.slice(1).join('.'), kind: monaco.languages.CompletionItemKind.Module,
+              insertText: parts.slice(1).join('.') + ';', range, detail: pkg });
+          });
+        }
+        if (/\bevent$/.test(before) || /\bstable$/.test(before)) return { suggestions: sugg };
+        // Attribute completions after '
+        VHDL_ATTRIBUTES.forEach(a => sugg.push({
+          label: a, kind: monaco.languages.CompletionItemKind.Property,
+          insertText: a, range, detail: 'VHDL attribute', sortText: '1' + a
+        }));
+        return { suggestions: sugg };
+      }
+
+      // ── After ' (apostrophe) — std_logic literal or attribute
+      const charBefore = ctx.lineText[position.column - 2];
+      if (charBefore === "'") {
+        // Only if not inside a string
+        LOGIC_LITERALS.forEach(({ v, doc }) => sugg.push({
+          label: v, kind: monaco.languages.CompletionItemKind.EnumMember,
+          insertText: v.slice(1), // the opening ' is already typed
+          range, detail: doc, sortText: '0' + v
+        }));
+        VHDL_ATTRIBUTES.forEach(a => sugg.push({
+          label: a, kind: monaco.languages.CompletionItemKind.Property,
+          insertText: a, range, detail: 'Attribute', sortText: '1' + a
+        }));
+        return { suggestions: sugg };
+      }
+
+      // ── After colon — port mode or type
+      if (ctx.afterColon && ctx.inPortDecl) {
+        PORT_MODES.forEach(({ label, detail }) => kw(label, detail));
+        return { suggestions: sugg };
+      }
+
+      // ── After port mode keyword (: in / : out etc) — type completions
+      if (/:\s*(in|out|inout|buffer)\s+\w*$/.test(ctx.lo)) {
+        TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+        syms.types.forEach(t => typ(t.name, t.name, 'User-defined type', false));
+        return { suggestions: sugg };
+      }
+
+      // ── After 'signal name :' or 'variable name :' or 'constant name :' — type
+      if (/^(signal|variable|constant)\s+\w[\w,\s]*\s*:\s*\w*$/.test(ctx.lo)) {
+        TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+        syms.types.forEach(t => typ(t.name, t.name, 'User-defined type', false));
+        return { suggestions: sugg };
+      }
+
+      // ── After <= (signal assignment RHS) — signals, ports, constants, literals, functions
+      if (ctx.afterAssign) {
+        // All driveable values
+        syms.ports.filter(p => p.mode === 'in').forEach(p =>
+          sym(p.name, monaco.languages.CompletionItemKind.Interface, `in port : ${p.type}`));
+        syms.signals.forEach(s =>
+          sym(s.name, monaco.languages.CompletionItemKind.Variable, `signal : ${s.type}`));
+        syms.constants.forEach(c =>
+          sym(c.name, monaco.languages.CompletionItemKind.Constant, `constant : ${c.type}`));
+        LOGIC_LITERALS.forEach(({ v, doc }) => sugg.push({
+          label: v, kind: monaco.languages.CompletionItemKind.EnumMember,
+          insertText: v, range, detail: doc, sortText: '0' + v
+        }));
+        // Useful functions/aggregates
+        ['not ', 'and ', 'or ', 'xor ', 'nand ', 'nor ', 'xnor '].forEach(op => kw(op.trim(), 'Logic operator'));
+        sugg.push({ label: "(others => '0')", kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: "(others => '0')", range, detail: 'Aggregate — all zeros', sortText: '1' });
+        sugg.push({ label: "(others => '1')", kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: "(others => '1')", range, detail: 'Aggregate — all ones', sortText: '1' });
+        sugg.push({ label: 'std_logic_vector(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'std_logic_vector(${1:signal})', range, detail: 'Type cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'to_unsigned(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'to_unsigned(${1:value}, ${2:width})', range, detail: 'numeric_std cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'to_signed(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'to_signed(${1:value}, ${2:width})', range, detail: 'numeric_std cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'to_integer(…)', kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'to_integer(${1:unsigned_or_signed})', range, detail: 'numeric_std cast',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        sugg.push({ label: 'rising_edge(…)', kind: monaco.languages.CompletionItemKind.Function,
+          insertText: 'rising_edge(${1:clk})', range, detail: 'Clock edge detection',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet, sortText: '2' });
+        return { suggestions: sugg };
+      }
+
+      // ── Inside process — sequential keywords + all local symbols
+      if (ctx.inProcess) {
+        KW_SEQUENTIAL.forEach(k => kw(k));
+        syms.ports.forEach(p => sym(p.name, monaco.languages.CompletionItemKind.Interface, `${p.mode} port`));
+        syms.signals.forEach(s => sym(s.name, monaco.languages.CompletionItemKind.Variable, 'signal'));
+        syms.constants.forEach(c => sym(c.name, monaco.languages.CompletionItemKind.Constant, 'constant'));
+        VHDL_SNIPPETS.filter(s => ['if','case','for_generate'].includes(s.label)).forEach(snip);
+        return { suggestions: sugg };
+      }
+
+      // ── After 'when' (in case) — values or signals
+      if (ctx.inCase || /\bwhen\s+\w*$/.test(ctx.lo)) {
+        LOGIC_LITERALS.forEach(({ v, doc }) => sugg.push({
+          label: v, kind: monaco.languages.CompletionItemKind.EnumMember,
+          insertText: v, range, detail: doc, sortText: '0'
+        }));
+        syms.signals.forEach(s => sym(s.name, monaco.languages.CompletionItemKind.Variable, 'signal'));
+        kw('others', 'Catch-all case');
+        return { suggestions: sugg };
+      }
+
+      // ── Architecture declarative region
+      if (ctx.inArchDecl) {
+        KW_DECL.forEach(k => kw(k));
+        VHDL_SNIPPETS.filter(s => ['signal','component','process','process_async','for_generate'].includes(s.label)).forEach(snip);
+        TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+        return { suggestions: sugg };
+      }
+
+      // ── Top-level (outside any block)
+      const isTopLevel = !ctx.inPortDecl && !ctx.inArchDecl && !ctx.inProcess && !ctx.inGeneric;
+      if (isTopLevel) {
+        KW_TOP.forEach(k => kw(k));
+        VHDL_SNIPPETS.filter(s => ['entity','architecture','library_use','component'].includes(s.label)).forEach(snip);
+        STD_LIBRARIES.forEach(l => kw(l, 'Library name'));
+        return { suggestions: sugg };
+      }
+
+      // ── Fallback — all symbols + all keywords + all snippets
+      syms.ports.forEach(p =>
+        sym(p.name, monaco.languages.CompletionItemKind.Interface, `${p.mode} port : ${p.type}`));
+      syms.signals.forEach(s =>
+        sym(s.name, monaco.languages.CompletionItemKind.Variable, `signal : ${s.type}`));
+      syms.constants.forEach(c =>
+        sym(c.name, monaco.languages.CompletionItemKind.Constant, `constant : ${c.type}`));
+      syms.types.forEach(t =>
+        sym(t.name, monaco.languages.CompletionItemKind.TypeParameter, 'user type'));
+      syms.components.forEach(c =>
+        sym(c.name, monaco.languages.CompletionItemKind.Class, 'component'));
+
+      VHDL_KEYWORDS.forEach(k => kw(k));
+      TYPE_COMPLETIONS.forEach(t => typ(t.label, t.insert, t.detail, t.snippet));
+      VHDL_SNIPPETS.forEach(snip);
+
+      return { suggestions: sugg };
+    }
+  });
+
+  // ── 5. Hover provider ──────────────────────────────────────────────────
+
+  const HOVER_DOCS = {
+    'std_logic': '**std_logic** *(ieee.std_logic_1164)*\n\nNine-valued logic type: `U X 0 1 Z W L H -`\n\nMost commonly used scalar signal type in synthesizable VHDL.',
+    'std_logic_vector': '**std_logic_vector** *(ieee.std_logic_1164)*\n\nArray of `std_logic`. Indexed as `(N downto 0)` or `(0 to N)`.\n\n```vhdl\nsignal bus : std_logic_vector(7 downto 0);\n```',
+    'rising_edge': '**rising_edge(clk)** *(ieee.std_logic_1164)*\n\nReturns `true` on the rising (0→1) transition of `clk`.\n\n```vhdl\nif rising_edge(clk) then\n  q <= d;\nend if;\n```',
+    'falling_edge': '**falling_edge(clk)** *(ieee.std_logic_1164)*\n\nReturns `true` on the falling (1→0) transition of `clk`.',
+    'process': '**process** statement\n\nA concurrent statement encapsulating sequential logic.\n\n```vhdl\nprocess(clk, rst)\nbegin\n  if rst = \'1\' then q <= \'0\';\n  elsif rising_edge(clk) then q <= d;\n  end if;\nend process;\n```',
+    'entity': '**entity** declaration\n\nDefines the interface (ports) of a VHDL design unit.\n\n```vhdl\nentity my_gate is\n  port ( a, b : in std_logic; y : out std_logic );\nend entity;\n```',
+    'architecture': '**architecture** body\n\nDefines the implementation of an entity.\n\n```vhdl\narchitecture rtl of my_gate is\nbegin\n  y <= a and b;\nend architecture;\n```',
+    'signal': '**signal** declaration\n\nDeclares an internal wire/net in the architecture declarative region.\n\n```vhdl\nsignal my_wire : std_logic;\nsignal bus : std_logic_vector(7 downto 0);\n```',
+    'port': '**port** clause\n\nDefines the external interface pins of an entity.',
+    'generic': '**generic** clause\n\nDefines parameters that can be customized at instantiation time.\n\n```vhdl\ngeneric ( WIDTH : integer := 8 );\n```',
+    'generate': '**generate** statement\n\nUsed to conditionally or repetitively instantiate components.\n\n```vhdl\nGEN: for i in 0 to N-1 generate\n  -- ...\nend generate;\n```',
+    'unsigned': '**unsigned** *(ieee.numeric_std)*\n\nUnsigned integer type. Use for arithmetic on `std_logic_vector`.\n\n```vhdl\nsignal count : unsigned(7 downto 0);\ncount <= count + 1;\n```',
+    'signed': '**signed** *(ieee.numeric_std)*\n\nTwo\'s-complement signed integer type.',
+    'downto': '**downto**\n\nSpecifies a descending range for arrays.\n`(7 downto 0)` — bit 7 is the MSB, standard convention.',
+    'others': "**others**\n\nUsed in aggregate expressions and case statements to cover all remaining cases.\n\n```vhdl\nsignal v : std_logic_vector(7 downto 0) := (others => '0');\n```",
+  };
+
+  monaco.languages.registerHoverProvider('vhdl', {
+    provideHover(model, position) {
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const key = word.word.toLowerCase();
+      const doc = HOVER_DOCS[key];
+      if (!doc) return null;
+      return {
+        range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+        contents: [{ value: doc, isTrusted: true }]
+      };
+    }
+  });
+
+  // ── 6. Signature help (process, port, generic) ─────────────────────────
+
+  monaco.languages.registerSignatureHelpProvider('vhdl', {
+    signatureHelpTriggerCharacters: ['(', ','],
+    provideSignatureHelp(model, position) {
+      const lineText = model.getLineContent(position.lineNumber).toLowerCase();
+      if (lineText.includes('process')) {
+        return {
+          value: {
+            signatures: [{
+              label: 'process(sensitivity_list)',
+              documentation: 'Process with sensitivity list. The process executes when any signal in the list changes.',
+              parameters: [{ label: 'sensitivity_list', documentation: 'Comma-separated signals: clk, rst, ...' }]
+            }],
+            activeSignature: 0,
+            activeParameter: 0
+          },
+          dispose() {}
+        };
+      }
+      return null;
+    }
+  });
+
+  // ── 7. Document symbol provider (outline) ─────────────────────────────
+
+  monaco.languages.registerDocumentSymbolProvider('vhdl', {
+    provideDocumentSymbols(model) {
+      const symbols = [];
+      const text = model.getValue();
+      const lines = text.split('\n');
+      lines.forEach((raw, i) => {
+        const line = raw.replace(/--.*$/, '').trim().toLowerCase();
+        let m;
+        if ((m = line.match(/^entity\s+(\w+)/))) {
+          symbols.push({
+            name: m[1],
+            detail: 'Entity',
+            kind: monaco.languages.SymbolKind.Module,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        } else if ((m = line.match(/^architecture\s+(\w+)/))) {
+          symbols.push({
+            name: m[1],
+            detail: 'Architecture',
+            kind: monaco.languages.SymbolKind.Namespace,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        } else if ((m = line.match(/^signal\s+(\w+)/))) {
+          symbols.push({
+            name: m[1],
+            detail: 'Signal',
+            kind: monaco.languages.SymbolKind.Variable,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        } else if ((m = line.match(/^(\w+)\s*:\s*(in|out|inout)\s+/))) {
+          symbols.push({
+            name: m[1],
+            detail: m[2] + ' port',
+            kind: monaco.languages.SymbolKind.Interface,
+            range: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length },
+            selectionRange: { startLineNumber: i+1, startColumn: 1, endLineNumber: i+1, endColumn: raw.length }
+          });
+        }
+      });
+      return symbols;
+    }
+  });
+
+  // ── 8. Define One Dark Pro-ish theme ──────────────────────────────────
+
+  monaco.editor.defineTheme('vhdl-dark', {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'keyword.vhdl',       foreground: 'c678dd', fontStyle: 'bold' },
+      { token: 'type.vhdl',          foreground: 'e5c07b' },
+      { token: 'comment.vhdl',       foreground: '5c6370', fontStyle: 'italic' },
+      { token: 'string.vhdl',        foreground: '98c379' },
+      { token: 'string.char.vhdl',   foreground: '98c379' },
+      { token: 'constant.logic.vhdl',foreground: 'd19a66' },
+      { token: 'number.vhdl',        foreground: 'd19a66' },
+      { token: 'number.float.vhdl',  foreground: 'd19a66' },
+      { token: 'number.based.vhdl',  foreground: 'd19a66' },
+      { token: 'operator.vhdl',      foreground: '56b6c2' },
+      { token: 'identifier.vhdl',    foreground: 'abb2bf' },
+      { token: 'attribute.vhdl',     foreground: '61afef', fontStyle: 'italic' },
+      { token: 'delimiter.vhdl',     foreground: 'abb2bf' },
+      { token: 'invalid.vhdl',       foreground: 'abb2bf' },
+    ],
+    colors: {
+      'editor.background': '#1e2127',
+      'editor.foreground': '#abb2bf',
+      'editor.lineHighlightBackground': '#2c313c',
+      'editor.selectionBackground': '#3e4451',
+      'editorLineNumber.foreground': '#4b5263',
+      'editorLineNumber.activeForeground': '#abb2bf',
+      'editorIndentGuide.background': '#2c313c',
+      'editorCursor.foreground': '#528bff',
+      'editorSuggestWidget.background': '#21252b',
+      'editorSuggestWidget.border': '#3a6eb4',
+      'editorHoverWidget.background': '#21252b',
+      'editorHoverWidget.border': '#3a6eb4',
+    }
+  });
+
+  // ── 9. Create editor instance ─────────────────────────────────────────
+
+  monacoEditor = monaco.editor.create(document.getElementById('monaco-editor'), {
+    language: 'vhdl',
+    theme: 'vhdl-dark',
+    fontSize: 13,
+    fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace",
+    fontLigatures: true,
+    lineHeight: 20,
+    minimap: { enabled: true, scale: 1 },
+    scrollBeyondLastLine: false,
+    wordWrap: 'off',
+    tabSize: 2,
+    insertSpaces: true,
+    autoClosingBrackets: 'always',
+    autoClosingQuotes: 'always',
+    formatOnType: false,
+    suggestOnTriggerCharacters: true,
+    quickSuggestions: { other: true, comments: false, strings: false },
+    parameterHints: { enabled: true },
+    hover: { enabled: true, delay: 300 },
+    folding: true,
+    glyphMargin: true,
+    renderLineHighlight: 'line',
+    scrollbar: { useShadows: false, verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+    bracketPairColorization: { enabled: true },
+    renderWhitespace: 'none',
+    padding: { top: 8, bottom: 8 },
+  });
+
+  // ── 10. Wire up diagnostics (run on change, debounced) ────────────────
+
+  let diagTimer = null;
+  monacoEditor.onDidChangeModelContent(() => {
+    clearTimeout(diagTimer);
+    diagTimer = setTimeout(() => {
+      const code = monacoEditor.getValue();
+      const model = monacoEditor.getModel();
+      const markers = getDiagnosticMarkers(code, monaco);
+      monaco.editor.setModelMarkers(model, 'vhdl-ls', markers);
+
+      // Update status indicator
+      const hasErrors = markers.some(m => m.severity === monaco.MarkerSeverity.Error);
+      const hasWarnings = markers.some(m => m.severity === monaco.MarkerSeverity.Warning);
+      const statusEl = document.getElementById('editor-status');
+      if (hasErrors) { statusEl.className = 'status-err'; statusEl.title = 'Errors detected'; }
+      else if (hasWarnings) { statusEl.className = 'status-warn'; statusEl.title = 'Warnings'; }
+      else { statusEl.className = 'status-ok'; statusEl.title = 'OK'; }
+    }, 400);
+  });
+
+  // ── 11. Ctrl+Enter to synthesize ──────────────────────────────────────
+
+  monacoEditor.addCommand(
+    monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+    () => synthesize()
+  );
+
+  // ── 12. Init canvas renderer ──────────────────────────────────────────
+
+  const canvas = document.getElementById('circuit-canvas');
+  renderer = new CircuitRenderer(canvas);
+  renderer.resize();
+
+  initResizer();
+
+  // Load default example
+  loadExample('half_adder');
+});
+
+window.addEventListener('resize', () => {
+  if (monacoEditor) monacoEditor.layout();
+  if (renderer) renderer.resize();
+});
+
+// ── Example loader ────────────────────────────────────────────────────────
+
+function loadExample(name) {
+  if (!name || !EXAMPLES[name]) return;
+  if (monacoEditor) {
+    monacoEditor.setValue(EXAMPLES[name]);
+    monacoEditor.setScrollPosition({ scrollTop: 0 });
+  }
+  document.getElementById('example-select').value = '';
+}
+
+// ── Synthesize ────────────────────────────────────────────────────────────
+
+async function synthesize() {
+  const vhdl = monacoEditor ? monacoEditor.getValue().trim() : '';
+  if (!vhdl) return;
+
+  const btn = document.getElementById('btn-synthesize');
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const emptyOverlay = document.getElementById('empty-overlay');
+  const errorPanel = document.getElementById('error-panel');
+
+  btn.classList.add('loading');
+  btn.disabled = true;
+  loadingOverlay.style.display = 'flex';
+  errorPanel.style.display = 'none';
+
+  try {
+    const netlist = await callClaudeAPI(vhdl);
+    currentNetlist = netlist;
+
+    const layout = layoutCircuit(netlist);
+    renderer.setLayout(layout);
+
+    emptyOverlay.style.display = 'none';
+
+    const entity = (netlist.entity || 'unknown').toUpperCase();
+    const gates = (netlist.gates || []).length;
+    const ports = (netlist.inputs || []).length + (netlist.outputs || []).length;
+    document.getElementById('sb-entity').textContent =
+      `${entity}  ·  ${gates} gate${gates !== 1 ? 's' : ''}  ·  ${ports} port${ports !== 1 ? 's' : ''}`;
+    document.getElementById('canvas-info').textContent =
+      `${(netlist.inputs||[]).length} in, ${(netlist.outputs||[]).length} out`;
+
+  } catch (err) {
+    errorPanel.textContent = '✕ ' + err.message;
+    errorPanel.style.display = 'block';
+    console.error(err);
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    loadingOverlay.style.display = 'none';
+  }
+}
+
+// ── Claude API ────────────────────────────────────────────────────────────
+
+async function callClaudeAPI(vhdl) {
+  const systemPrompt = `You are a VHDL synthesis tool. Convert VHDL code into a circuit netlist JSON.
+
+RULES:
+1. Return ONLY valid JSON. No markdown, no backticks, no explanation.
+2. Every signal/wire must have exactly one gate driving it (except primary inputs).
+3. Gate types allowed: AND, OR, NOT, XOR, NAND, NOR, XNOR, BUFFER, DFF, MUX
+4. NOT gates have exactly 1 input.
+5. DFF inputs order: ["d", "clk"] or ["d", "clk", "rst"]. Output is the Q signal name.
+6. Each gate needs a unique id like "g1", "g2", etc.
+7. Signal/wire names should come from the VHDL (use actual signal names from the code).
+8. For clocked processes (rising_edge, falling_edge), use DFF gates.
+9. For conditional signal assignments (when/else or if/else), use MUX gates.
+10. Decompose complex operations into primitive gates.
+
+JSON structure:
+{
+  "entity": "entity_name",
+  "inputs": ["port1", "port2"],
+  "outputs": ["out1"],
+  "signals": ["sig1", "sig2"],
+  "gates": [
+    { "id": "g1", "type": "AND", "inputs": ["a", "b"], "output": "sig1" }
+  ],
+  "clocked": false
+}`;
+
+  // NOTE: this request carries no API key. It only works where something upstream
+  // injects credentials (e.g. a proxy). From a plain GitHub Pages site the browser
+  // will be refused, so surface that clearly instead of a generic failure.
+  let response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: `Convert this VHDL to a circuit netlist JSON:\n\n${vhdl}` }]
+      })
+    });
+  } catch (e) {
+    throw new Error('Could not reach the synthesis service. Check your connection and try again.');
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('The synthesis service rejected the request (not authorized). This site needs a backend that holds the API key.');
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`API error ${response.status}: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  const text = data.content.map(b => b.text || '').join('').trim();
+  const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
+  let netlist;
+  try { netlist = JSON.parse(clean); }
+  catch(e) { throw new Error('Could not parse AI response as JSON. Try simplifying your VHDL.'); }
+
+  if (!netlist.gates || !netlist.inputs || !netlist.outputs) {
+    throw new Error('Invalid netlist structure from AI. Missing gates, inputs, or outputs.');
+  }
+
+  return netlist;
+}
+
+// ── Zoom controls ─────────────────────────────────────────────────────────
+
+function zoom(factor) {
+  if (!renderer) return;
+  const wrap = document.getElementById('canvas-wrap');
+  const W = wrap.clientWidth / 2, H = wrap.clientHeight / 2;
+  renderer.offsetX = W - (W - renderer.offsetX) * factor;
+  renderer.offsetY = H - (H - renderer.offsetY) * factor;
+  renderer.scale = Math.max(0.2, Math.min(4, renderer.scale * factor));
+  renderer.draw();
+  updateZoomLabel();
+}
+
+function fitToScreen() {
+  if (!renderer || !renderer.layout) return;
+  renderer.fitToContent();
+  renderer.draw();
+  updateZoomLabel();
+}
+
+function updateZoomLabel() {
+  if (!renderer) return;
+  const pct = Math.round(renderer.scale * 100) + '%';
+  document.getElementById('zoom-label').textContent = pct;
+  document.getElementById('sb-zoom').textContent = pct;
+}
+
+// ── Resizer ───────────────────────────────────────────────────────────────
+
+function initResizer() {
+  const resizer = document.getElementById('resizer');
+  const editorPane = document.getElementById('editor-pane');
+  let dragging = false, startX = 0, startW = 0;
+
+  resizer.addEventListener('mousedown', e => {
+    dragging = true; startX = e.clientX; startW = editorPane.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+  });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const newW = Math.max(200, Math.min(700, startW + e.clientX - startX));
+    editorPane.style.width = newW + 'px';
+    if (monacoEditor) monacoEditor.layout();
+    if (renderer) renderer.resize();
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false; resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+  });
+}
